@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tribute · Availability Check</title>
+<style>
+  :root {
+    --ink:#13343b; --muted:#5b7178; --line:#e1e8ea; --bg:#f4f7f8;
+    --teal:#0f766e; --teal-d:#0b5852;
+    --yes:#16794f; --yes-bg:#e7f6ee; --hedge:#9a6700; --hedge-bg:#fdf6e3;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  .wrap { max-width:1060px; margin:0 auto; padding:28px 20px 60px; }
+  header { display:flex; align-items:center; gap:12px; }
+  header .dot { width:30px;height:30px;border-radius:8px;background:var(--teal);display:grid;place-items:center;color:#fff;font-weight:700; }
+  h1 { font-size:20px; margin:0; }
+  .sub { color:var(--muted); margin:4px 0 22px; }
+  .grid { display:grid; grid-template-columns:400px 1fr; gap:22px; align-items:start; }
+  @media (max-width:860px){ .grid{ grid-template-columns:1fr; } }
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 14px; }
+  label { display:block; font-weight:600; font-size:13px; margin:14px 0 6px; }
+  input[type=text], input[type=date], select { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:9px; font-size:14px; background:#fff; color:var(--ink); }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; }
+  .seg button { flex:1; min-width:84px; padding:9px 8px; border:1px solid var(--line); background:#fff; border-radius:9px; cursor:pointer; font-size:13px; font-weight:600; color:var(--muted); }
+  .seg button.on { border-color:var(--teal); background:#ecfdfa; color:var(--teal-d); }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; }
+  .chip { border:1px solid var(--line); padding:7px 11px; border-radius:999px; cursor:pointer; user-select:none; font-size:13px; color:var(--muted); }
+  .chip.on { border-color:var(--teal); background:#ecfdfa; color:var(--teal-d); }
+  .ac { position:relative; }
+  .suggest { position:absolute; top:100%; left:0; right:0; z-index:20; background:#fff; border:1px solid var(--line); border-radius:9px; margin-top:4px; box-shadow:0 8px 22px rgba(0,0,0,.10); max-height:240px; overflow:auto; }
+  .suggest div { padding:9px 11px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line); }
+  .suggest div:last-child { border-bottom:0; } .suggest div:hover { background:#ecfdfa; }
+  .muted { color:var(--muted); font-size:12px; margin-top:6px; }
+  button.go { margin-top:20px; width:100%; padding:12px; border:0; border-radius:10px; background:var(--teal); color:#fff; font-weight:700; font-size:15px; cursor:pointer; }
+  button.go:hover{ background:var(--teal-d); } button.go:disabled{ opacity:.6; }
+  .hide { display:none; }
+  #out { min-height:120px; }
+  .placeholder { color:var(--muted); display:grid; place-items:center; height:220px; text-align:center; }
+  .badge { display:inline-flex; align-items:center; gap:9px; font-weight:800; font-size:21px; padding:10px 16px; border-radius:11px; }
+  .badge.YES{ background:var(--yes-bg); color:var(--yes); } .badge.HEDGE{ background:var(--hedge-bg); color:var(--hedge); }
+  .tell { margin:16px 0; padding:14px 16px; border-radius:11px; background:#0f172a; color:#e2e8f0; }
+  .tell .lab { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#94a3b8; margin-bottom:4px; }
+  .tell .scr { font-size:16px; font-weight:600; }
+  .shifts { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 14px; }
+  .sc { border:1px solid var(--line); border-radius:10px; padding:9px 12px; font-size:13px; }
+  .sc .t { font-weight:700; } .sc .c { color:var(--muted); }
+  .team { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .member { border:1px solid var(--line); border-radius:11px; padding:11px 13px; background:#f0fdfa; min-width:200px; }
+  .member .sh { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--teal-d); }
+  .member .nm { font-weight:700; } .member .meta { color:var(--muted); font-size:13px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  th,td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .pill { font-size:11px; padding:2px 7px; border-radius:999px; background:#eef2f3; color:var(--muted); }
+  .gaps { margin-top:12px; font-size:13px; } .gaps li { color:var(--hedge); }
+  .caveat { margin-top:14px; font-size:12px; color:var(--hedge); background:var(--hedge-bg); border:1px solid #f3e2b3; padding:9px 12px; border-radius:9px; }
+  .foot { color:var(--muted); font-size:12px; margin-top:12px; }
+  .gate { position:fixed; inset:0; background:rgba(19,52,59,.55); backdrop-filter:blur(3px); display:grid; place-items:center; z-index:100; }
+  .gatecard { background:#fff; border-radius:14px; padding:26px; width:320px; box-shadow:0 20px 60px rgba(0,0,0,.25); text-align:center; }
+  .gatecard .dot { width:34px;height:34px;border-radius:9px;background:var(--teal);display:inline-grid;place-items:center;color:#fff;font-weight:700;margin-bottom:10px; }
+  .gatetitle { font-weight:800; font-size:17px; }
+  .gatesub { color:var(--muted); font-size:13px; margin:6px 0 14px; }
+  .gatecard input { width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:9px; font-size:14px; }
+  .gatecard button { margin-top:12px; width:100%; padding:11px; border:0; border-radius:10px; background:var(--teal); color:#fff; font-weight:700; cursor:pointer; }
+  .gateerr { color:#b91c1c; font-size:12px; margin-top:8px; min-height:14px; }
+</style>
+</head>
+<body>
+<div id="gate" class="gate hide">
+  <div class="gatecard">
+    <div class="dot">T</div>
+    <div class="gatetitle">Availability Check</div>
+    <p class="gatesub">Enter the team password to continue.</p>
+    <input type="password" id="gatepw" placeholder="Team password" autocomplete="current-password" />
+    <button id="gatego" type="button">Enter</button>
+    <div id="gateerr" class="gateerr"></div>
+  </div>
+</div>
+<div class="wrap">
+  <header><div class="dot">T</div><h1>Availability Check</h1></header>
+  <p class="sub">Recurring care · can we confirm now, or check with scheduling?</p>
+
+  <div class="grid">
+    <form id="f" class="card">
+      <h2>New client request</h2>
+
+      <label>Coverage</label>
+      <div class="seg" id="coverage">
+        <button type="button" data-v="Days" class="on">Days</button>
+        <button type="button" data-v="Overnights">Overnights</button>
+        <button type="button" data-v="24/7">24/7</button>
+        <button type="button" data-v="Live-in">Live-in</button>
+      </div>
+      <div class="muted" id="covnote">Daytime shifts.</div>
+
+      <div id="dayLenWrap">
+        <label>Day shift length</label>
+        <div class="seg" id="day_length">
+          <button type="button" data-v="Long" class="on">Long hours</button>
+          <button type="button" data-v="Short">Short hours</button>
+        </div>
+      </div>
+
+      <label>Client address</label>
+      <div class="ac">
+        <input type="text" id="client_address" autocomplete="off" placeholder="Start typing an address…" value="Dorchester, MA" />
+        <div id="suggest" class="suggest hide"></div>
+      </div>
+      <div class="muted" id="coordnote"></div>
+
+      <label>Start date</label>
+      <input type="date" id="start_date" value="2026-06-15" />
+
+      <label>Schedule</label>
+      <div class="seg" id="recurrence">
+        <button type="button" data-v="weekly" class="on">Weekly (every day)</button>
+        <button type="button" data-v="specific">Specific days</button>
+      </div>
+      <div id="daysWrap" class="hide">
+        <label>Which days</label>
+        <div class="chips" id="days"></div>
+      </div>
+
+      <label>Restrictions</label>
+      <div class="chips" id="checks">
+        <span class="chip" data-v="dog">Dog</span>
+        <span class="chip" data-v="cat">Cat</span>
+        <span class="chip" data-v="no_parking">No parking</span>
+        <span class="chip" data-v="parking">Parking</span>
+        <span class="chip" data-v="smoking">Smoking</span>
+      </div>
+
+      <button class="go" id="go" type="submit">Check Availability</button>
+    </form>
+
+    <div class="card">
+      <h2>Result</h2>
+      <div id="out"><div class="placeholder">Fill out the request and hit<br/><b>Check Availability</b>.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Hosted backend (Andrew's vivProxy Azure Function).
+  const VIVPROXY = 'https://tribute-api-prod-bkc4hfcwf3f2f6bf.centralus-01.azurewebsites.net/api/vivProxy';
+
+  // Shared-password gate. Password is entered by the user and kept in this browser
+  // only (never in the page source); it's sent as ?key= to the gated endpoint.
+  const KEY_STORE = 'tribute_avail_key';
+  const gate = document.getElementById('gate');
+  const getKey = () => localStorage.getItem(KEY_STORE) || '';
+  function showGate(msg) { gate.classList.remove('hide'); document.getElementById('gateerr').textContent = msg || ''; setTimeout(()=>document.getElementById('gatepw').focus(),50); }
+  function hideGate() { gate.classList.add('hide'); }
+  document.getElementById('gatego').onclick = () => {
+    const v = document.getElementById('gatepw').value.trim();
+    if (!v) return; localStorage.setItem(KEY_STORE, v); document.getElementById('gatepw').value=''; hideGate();
+  };
+  document.getElementById('gatepw').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('gatego').click(); });
+  if (!getKey()) showGate();
+
+  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const state = { coverage:'Days', day_length:'Long', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), coords:null };
+
+  const daysEl = document.getElementById('days');
+  DOW.forEach((d,i) => {
+    const c = document.createElement('span'); c.className='chip'; c.textContent=d; c.dataset.i=i;
+    if (state.days.has(i)) c.classList.add('on');
+    c.onclick = () => { c.classList.toggle('on'); c.classList.contains('on')?state.days.add(i):state.days.delete(i); };
+    daysEl.appendChild(c);
+  });
+
+  function seg(id, key, after) {
+    document.querySelectorAll('#'+id+' button').forEach(b => b.onclick = () => {
+      document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); state[key] = b.dataset.v; if (after) after();
+    });
+  }
+  const covNotes = { Days:'Daytime shifts.', Overnights:'Overnight shifts.', '24/7':'Days + overnights, staffed as a team (not live-in).', 'Live-in':'One caregiver living in.' };
+  function syncCoverage() {
+    document.getElementById('covnote').textContent = covNotes[state.coverage];
+    const needsDay = state.coverage==='Days' || state.coverage==='24/7';
+    document.getElementById('dayLenWrap').classList.toggle('hide', !needsDay);
+  }
+  seg('coverage','coverage', syncCoverage);
+  seg('day_length','day_length');
+  seg('recurrence','recurrence', () => document.getElementById('daysWrap').classList.toggle('hide', state.recurrence!=='specific'));
+  document.querySelectorAll('#checks .chip').forEach(c => c.onclick = () => {
+    c.classList.toggle('on'); c.classList.contains('on')?state.restrictions.add(c.dataset.v):state.restrictions.delete(c.dataset.v);
+  });
+
+  const esc = s => String(s ?? '').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+
+  // Address autocomplete — OpenStreetMap (keyless), called directly from the browser.
+  async function osmSearch(q) {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=0&limit=5&countrycodes=us&q=' + encodeURIComponent(q);
+    const r = await fetch(url, { headers: { 'Accept':'application/json' } });
+    if (!r.ok) return [];
+    return (await r.json()).map(x => ({ label:x.display_name, lat:+x.lat, lon:+x.lon }));
+  }
+  const addrInput = document.getElementById('client_address');
+  const sg = document.getElementById('suggest');
+  const coordnote = document.getElementById('coordnote');
+  let acTimer = null;
+  addrInput.addEventListener('input', () => {
+    state.coords = null; coordnote.textContent = '';
+    const v = addrInput.value; clearTimeout(acTimer);
+    if (v.trim().length < 3) { sg.classList.add('hide'); return; }
+    acTimer = setTimeout(async () => {
+      try {
+        const list = await osmSearch(v);
+        if (!list.length) { sg.classList.add('hide'); return; }
+        sg._list = list;
+        sg.innerHTML = list.map((x, i) => '<div data-i="'+i+'">'+esc(x.label)+'</div>').join('');
+        sg.classList.remove('hide');
+      } catch (_) { sg.classList.add('hide'); }
+    }, 300);
+  });
+  sg.addEventListener('click', (e) => {
+    const div = e.target.closest('div[data-i]'); if (!div) return;
+    const x = sg._list[Number(div.dataset.i)];
+    addrInput.value = x.label; state.coords = { lat:x.lat, lon:x.lon };
+    coordnote.textContent = '📍 ' + x.lat.toFixed(4) + ', ' + x.lon.toFixed(4);
+    sg.classList.add('hide');
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.ac')) sg.classList.add('hide'); });
+
+  document.getElementById('f').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const go = document.getElementById('go'), out = document.getElementById('out');
+    go.disabled = true; go.textContent = 'Checking…';
+    try {
+      // Resolve coordinates (use the picked suggestion, else geocode the typed text).
+      let coords = state.coords;
+      if (!coords) { const list = await osmSearch(addrInput.value); if (list[0]) coords = { lat:list[0].lat, lon:list[0].lon }; }
+      const body = {
+        coverage: state.coverage,
+        day_length: state.day_length,
+        client_address: addrInput.value,
+        client_latitude: coords ? coords.lat : undefined,
+        client_longitude: coords ? coords.lon : undefined,
+        start_date: document.getElementById('start_date').value,
+        recurrence: state.recurrence,
+        days_of_week: state.recurrence==='specific' ? [...state.days] : undefined,
+        restrictions: [...state.restrictions],
+      };
+      const res = await fetch(VIVPROXY + '?endpoint=availability_qualify&key=' + encodeURIComponent(getKey()), {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+      });
+      if (res.status === 401) { localStorage.removeItem(KEY_STORE); showGate('Wrong password — try again.'); out.innerHTML=''; return; }
+      out.innerHTML = render(await res.json());
+    } catch (err) {
+      out.innerHTML = '<div class="caveat">Request failed: '+esc(err.message)+'</div>';
+    } finally {
+      go.disabled = false; go.textContent = 'Check Availability';
+    }
+  });
+
+  function render(d) {
+    if (d.error) return '<div class="caveat"><b>'+esc(d.error)+'</b></div>';
+    const yes = d.decision === 'YES';
+    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ Check with scheduling')+'</div>';
+    h += '<div class="tell"><div class="lab">Tell caller</div><div class="scr">“'+esc(d.lead_taker_script)+'”</div></div>';
+    h += '<div class="foot">'+esc(d.coverage)+' · '+esc(d.days_per_week)+' day(s)/week · '+esc(d.caregivers_local)+' local'
+       + (d.caregivers_extended!=null?' · '+esc(d.caregivers_extended)+' extended':'')+' · '+esc(d.response_time_ms||'')+'</div>';
+    if (d.shift_coverage && d.shift_coverage.length) {
+      h += '<div class="shifts">' + d.shift_coverage.map(s =>
+        '<div class="sc"><div class="t">'+esc(s.shift)+' — '+esc(s.coverage)+'</div><div class="c">'+(s.days_covered||[]).join(' ')+'</div></div>').join('') + '</div>';
+    }
+    if (d.recommended_team && d.recommended_team.length) {
+      h += '<div class="team">' + d.recommended_team.map(m =>
+        '<div class="member"><div class="sh">'+esc(m.shift)+'</div><div class="nm">'+esc(m.name)+(m.is_driver?' 🚗':'')+'</div>'
+        + '<div class="meta">'+esc(m.weekly_coverage)+' of days · '+esc(m.distance_miles)+' mi</div>'
+        + '<div class="meta">'+(m.days_covered||[]).join(' ')+'</div></div>').join('') + '</div>';
+    }
+    if (d.candidates && d.candidates.length) {
+      h += '<table><tr><th>Shift</th><th>Caregiver</th><th>Dist</th><th>Open days</th></tr>';
+      for (const c of d.candidates) h += '<tr><td>'+esc(c.shift)+'</td><td>'+esc(c.name)+(c.is_driver?' <span class="pill">🚗</span>':'')
+        + '</td><td>'+esc(c.distance_miles)+' mi</td><td>'+(c.days_covered||[]).join(' ')+'</td></tr>';
+      h += '</table>';
+    }
+    if (d.gaps && d.gaps.length) h += '<ul class="gaps">'+d.gaps.map(g=>'<li>'+esc(g)+'</li>').join('')+'</ul>';
+    if (d.extended_options && d.extended_options.length)
+      h += '<div class="foot">Extended options: '+d.extended_options.map(o=>esc(o.name)+' ('+esc(o.distance_miles)+' mi)').join(', ')+'</div>';
+    if (d.reason && !yes) h += '<div class="foot">Reason: '+esc(d.reason)+'</div>';
+    return h;
+  }
+
+  syncCoverage();
+</script>
+</body>
+</html>
