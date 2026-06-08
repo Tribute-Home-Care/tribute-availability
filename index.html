@@ -59,6 +59,7 @@
   .caveat { margin-top:14px; font-size:12px; color:var(--hedge); background:var(--hedge-bg); border:1px solid #f3e2b3; padding:9px 12px; border-radius:9px; }
   .foot { color:var(--muted); font-size:12px; margin-top:12px; }
   .gate { position:fixed; inset:0; background:rgba(19,52,59,.55); backdrop-filter:blur(3px); display:grid; place-items:center; z-index:100; }
+  .gate.hide { display:none; }
   .gatecard { background:#fff; border-radius:14px; padding:26px; width:320px; box-shadow:0 20px 60px rgba(0,0,0,.25); text-align:center; }
   .gatecard .dot { width:34px;height:34px;border-radius:9px;background:var(--teal);display:inline-grid;place-items:center;color:#fff;font-weight:700;margin-bottom:10px; }
   .gatetitle { font-weight:800; font-size:17px; }
@@ -151,14 +152,21 @@
   // only (never in the page source); it's sent as ?key= to the gated endpoint.
   const KEY_STORE = 'tribute_avail_key';
   const gate = document.getElementById('gate');
-  const getKey = () => localStorage.getItem(KEY_STORE) || '';
-  function showGate(msg) { gate.classList.remove('hide'); document.getElementById('gateerr').textContent = msg || ''; setTimeout(()=>document.getElementById('gatepw').focus(),50); }
+  // Keep the key in memory; persist to localStorage best-effort (some browsers
+  // block storage and throw — that must never break the gate).
+  let memKey = '';
+  const getKey = () => { try { return localStorage.getItem(KEY_STORE) || memKey; } catch (e) { return memKey; } };
+  const setKey = (v) => { memKey = v; try { localStorage.setItem(KEY_STORE, v); } catch (e) {} };
+  const clearKey = () => { memKey = ''; try { localStorage.removeItem(KEY_STORE); } catch (e) {} };
+  function showGate(msg) { gate.classList.remove('hide'); document.getElementById('gateerr').textContent = msg || ''; setTimeout(()=>{ try{document.getElementById('gatepw').focus();}catch(e){} },50); }
   function hideGate() { gate.classList.add('hide'); }
-  document.getElementById('gatego').onclick = () => {
-    const v = document.getElementById('gatepw').value.trim();
-    if (!v) return; localStorage.setItem(KEY_STORE, v); document.getElementById('gatepw').value=''; hideGate();
-  };
-  document.getElementById('gatepw').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('gatego').click(); });
+  function submitGate() {
+    const v = (document.getElementById('gatepw').value || '').trim();
+    if (!v) { document.getElementById('gateerr').textContent = 'Enter the password.'; return; }
+    setKey(v); document.getElementById('gatepw').value = ''; hideGate();
+  }
+  document.getElementById('gatego').addEventListener('click', submitGate);
+  document.getElementById('gatepw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitGate(); } });
   if (!getKey()) showGate();
 
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -249,7 +257,7 @@
       const res = await fetch(VIVPROXY + '?endpoint=availability_qualify&key=' + encodeURIComponent(getKey()), {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
       });
-      if (res.status === 401) { localStorage.removeItem(KEY_STORE); showGate('Wrong password — try again.'); out.innerHTML=''; return; }
+      if (res.status === 401) { clearKey(); showGate('Wrong password — try again.'); out.innerHTML=''; return; }
       out.innerHTML = render(await res.json());
     } catch (err) {
       out.innerHTML = '<div class="caveat">Request failed: '+esc(err.message)+'</div>';
