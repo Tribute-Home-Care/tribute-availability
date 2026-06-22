@@ -125,6 +125,17 @@
   </header>
   <p class="sub">Recurring care · can we confirm now, or check with scheduling?</p>
 
+  <div class="card" id="leadCard">
+    <h2>New lead — paste your notes</h2>
+    <div class="sub2">Claude reads your call notes and fills the availability check and the deal form below. Review, run availability, then create the deal.</div>
+    <textarea id="d_notes_raw" style="min-height:120px" placeholder="Type or paste everything the caller told you — who called, who needs care, where, what schedule, when to start, referral source…"></textarea>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button type="button" class="go" id="d_parse" style="width:auto;margin-top:0;padding:11px 22px">✨ Parse with AI</button>
+      <span id="d_parse_status" class="muted"></span>
+    </div>
+    <div id="d_unmapped" class="muted" style="margin-top:10px"></div>
+  </div>
+
   <div class="grid">
     <form id="f" class="card">
       <h2>New client request</h2>
@@ -193,7 +204,7 @@
 
   <div class="card dealcard" id="dealCard">
     <h2>Lead details → create HubSpot deal</h2>
-    <div class="sub2">Start date, schedule, and address carry over from the request above. The deal is created in HubSpot owned by the connected rep.</div>
+    <div class="sub2">These fields are filled from your notes at the top — review and tweak before creating. The deal is created in HubSpot owned by the connected rep.</div>
 
     <div class="fieldsub">Caller</div>
     <div class="dealgrid">
@@ -219,6 +230,8 @@
 
     <div class="fieldsub">Care &amp; deal</div>
     <div class="dealgrid">
+      <div><label>Deal name</label><input type="text" id="d_dealname" autocomplete="off" /></div>
+      <div><label>Location of care</label><input type="text" id="d_location" autocomplete="off" /></div>
       <div><label>Service level</label><select id="d_service_level">
         <option value="">—</option><option value="A">A (120+ hrs)</option><option value="B">B (61-119 hrs)</option><option value="C">C (24-60 hrs)</option><option value="D">D (1-23 hrs)</option><option value="Live-In">Live-In</option>
       </select></div>
@@ -227,8 +240,13 @@
       </select></div>
       <div><label>Estimated amount ($)</label><input type="text" id="d_amount" inputmode="decimal" autocomplete="off" /></div>
       <div><label>Referred by</label><input type="text" id="d_referred_by" autocomplete="off" /></div>
+      <div class="colspan"><label>Schedule requested</label><input type="text" id="d_schedule" autocomplete="off" /></div>
       <div class="colspan"><label>General summary / reason for service</label><textarea id="d_notes"></textarea></div>
+      <div class="colspan"><label>Follow-up / scheduling ideas</label><input type="text" id="d_followup" autocomplete="off" /></div>
     </div>
+
+    <div class="fieldsub">Teams post preview</div>
+    <textarea id="d_teams" placeholder="Draft summary for the Teams channel (generated from the notes; editable)."></textarea>
 
     <button type="button" class="go" id="d_create" style="margin-top:18px;">Create HubSpot deal</button>
     <div id="d_result"></div>
@@ -278,9 +296,11 @@
     if (!who.connected) { res.innerHTML = '<div class="caveat">Connect HubSpot first (top-right), then try again.</div>'; hsConnect(); return; }
     const addr = document.getElementById('client_address').value;
     const body = {
+      dealname: dval('d_dealname'),
       start_date: document.getElementById('start_date').value,
-      schedule_requested: scheduleRequestedText(),
-      location_of_care: addr, client_address: addr,
+      schedule_requested: dval('d_schedule') || scheduleRequestedText(),
+      location_of_care: dval('d_location') || addr, client_address: addr,
+      scheduling_follow_up: dval('d_followup'),
       service_level: dval('d_service_level'), hours_of_service_a_day: dval('d_hours'),
       caller_name: dval('d_caller_name'), caller_phone: dval('d_caller_phone'), caller_email: dval('d_caller_email'),
       caller_s_relationship_to_client: dval('d_caller_rel'),
@@ -302,6 +322,75 @@
       else res.innerHTML = '<div class="caveat"><b>Could not create deal:</b> ' + esc(j.error || 'unknown') + (j.detail ? ' — ' + esc(j.detail) : '') + '</div>';
     } catch (e) { res.innerHTML = '<div class="caveat">Request failed: ' + esc(e.message) + '</div>'; }
     finally { btn.disabled = false; btn.textContent = 'Create HubSpot deal'; }
+  }
+
+  // --- AI parse: one notes box -> availability intake + deal form + Teams draft
+  function setSelectVal(id, v) {
+    if (v == null || v === '') return;
+    const el = document.getElementById(id); if (!el) return;
+    for (const o of el.options) { if (o.value === String(v) || o.text === String(v)) { el.value = o.value; return; } }
+  }
+  function setSegVal(id, key, v, after) {
+    if (v == null || v === '') return;
+    let matched = false;
+    document.querySelectorAll('#' + id + ' button').forEach((b) => { const on = b.dataset.v === String(v); b.classList.toggle('on', on); if (on) matched = true; });
+    if (matched) { state[key] = String(v); if (after) after(); }
+  }
+  function setDaysVal(arr) {
+    if (!Array.isArray(arr)) return;
+    state.days = new Set(arr.map(Number));
+    document.querySelectorAll('#days .chip').forEach((c) => c.classList.toggle('on', state.days.has(Number(c.dataset.i))));
+  }
+  function setInputVal(id, v) { if (v == null || v === '') return; const el = document.getElementById(id); if (el) el.value = v; }
+
+  function fillFromParse(p) {
+    const a = p.availability || {}, f = p.fields || {};
+    setSegVal('coverage', 'coverage', a.coverage, syncCoverage);
+    setSegVal('day_length', 'day_length', a.day_length);
+    setSegVal('recurrence', 'recurrence', a.recurrence, () => document.getElementById('daysWrap').classList.toggle('hide', state.recurrence !== 'specific'));
+    setSegVal('gender', 'gender', a.gender_preference);
+    if (Array.isArray(a.days_of_week)) setDaysVal(a.days_of_week);
+    if (a.address) { const ai = document.getElementById('client_address'); if (ai) { ai.value = a.address; state.coords = null; } }
+    setInputVal('start_date', a.start_date);
+    setInputVal('d_caller_name', f.caller_name); setInputVal('d_caller_phone', f.caller_phone); setInputVal('d_caller_email', f.caller_email);
+    setSelectVal('d_caller_rel', f.caller_s_relationship_to_client);
+    setInputVal('d_client_name', f.client_name); setInputVal('d_client_last', f.client_last_name);
+    setInputVal('d_client_phone', f.client_phone); setInputVal('d_client_email', f.client_email);
+    setInputVal('d_client_city', f.client_city); setInputVal('d_client_state', f.client_state);
+    setSelectVal('d_client_gender', f.client_gender); setInputVal('d_client_dob', f.client_dob);
+    setSelectVal('d_service_level', f.service_level); setSelectVal('d_hours', f.hours_of_service_a_day);
+    setInputVal('d_amount', f.amount != null ? String(f.amount) : ''); setInputVal('d_referred_by', f.referred_by_);
+    setInputVal('d_schedule', f.schedule_requested); setInputVal('d_location', f.location_of_care);
+    setInputVal('d_notes', f.notes); setInputVal('d_followup', f.scheduling_follow_up);
+    setInputVal('d_dealname', p.dealname); setInputVal('d_teams', p.teams_summary);
+    const um = document.getElementById('d_unmapped');
+    if (um) um.innerHTML = (p.unmapped && p.unmapped.length) ? '⚠ Not auto-filled — handle manually: ' + p.unmapped.map(esc).join(' · ') : '';
+  }
+
+  function parsePrompt() {
+    const now = new Date();
+    const wd = now.toLocaleDateString('en-US', { weekday: 'long' });
+    const iso = now.toISOString().slice(0, 10);
+    return 'You parse a home-care lead-taker\'s free-text notes into (1) an availability-check intake, (2) a HubSpot deal, and (3) a Teams summary for Tribute Home Care. Return ONLY valid JSON (no prose, no markdown fences): {"dealname":str,"availability":{...},"fields":{...},"teams_summary":str,"unmapped":[str]}.\n'
+      + 'availability keys (omit if unknown): coverage one of [Days, Overnights, 24/7, Live-in]; day_length one of [Long, Short] (Short = under ~5h/visit); recurrence one of [weekly, specific]; days_of_week array of ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address for the availability check — at least town + state (infer from the venue if needed); start_date YYYY-MM-DD; gender_preference one of [male, female] (omit if either/no preference).\n'
+      + 'fields keys (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client one of [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender one of [Female, Male]; client_dob; location_of_care (the venue/where care happens); service_level one of [A,B,C,D,Live-In] (WEEKLY hours band A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day one of ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); schedule_requested; referred_by_; amount (number only); notes (clean General Summary); scheduling_follow_up.\n'
+      + 'teams_summary: 3-5 line plain-text Teams channel post; say "visit", never "shift". unmapped: anything important that did not fit a field (pricing like "1.5-person rate", pets, deadlines). Resolve relative dates; today is ' + wd + ' ' + iso + '.';
+  }
+
+  async function parseNotes() {
+    const raw = dval('d_notes_raw');
+    const status = document.getElementById('d_parse_status');
+    if (!raw) { status.textContent = 'Paste some notes first.'; return; }
+    const btn = document.getElementById('d_parse'); btn.disabled = true; const old = btn.textContent; btn.textContent = 'Parsing…'; status.textContent = '';
+    try {
+      const r = await fetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, system: parsePrompt(), messages: [{ role: 'user', content: raw }] }) });
+      const j = await r.json();
+      let txt = (j.content && j.content[0] && j.content[0].text) || '';
+      txt = txt.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+      fillFromParse(JSON.parse(txt));
+      status.textContent = '✓ Filled — review, then Check Availability and create the deal.';
+    } catch (e) { status.textContent = 'Couldn’t parse (' + (e.message || 'try again') + ') — you can still fill fields manually.'; }
+    finally { btn.disabled = false; btn.textContent = old; }
   }
 
   // Shared-password gate. Password is entered by the user and kept in this browser
@@ -571,6 +660,7 @@
 
   syncCoverage();
   document.getElementById('hsConnect').onclick = hsConnect;
+  document.getElementById('d_parse').onclick = parseNotes;
   document.getElementById('d_create').onclick = createDealSubmit;
   hsWhoami();
 </script>
