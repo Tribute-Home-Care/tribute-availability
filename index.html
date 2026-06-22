@@ -92,6 +92,11 @@
   .qabtn { padding:9px 16px; border:0; border-radius:9px; background:var(--teal); color:#fff; font-weight:700; cursor:pointer; }
   .qalog .q { font-weight:700; margin-top:8px; } .qalog .a { margin:3px 0 6px; color:var(--muted); }
   .toggle { margin-top:16px; background:none; border:1px solid var(--line); border-radius:9px; padding:8px 13px; font-size:13px; font-weight:600; color:var(--teal-d); cursor:pointer; }
+  /* HubSpot connect bar */
+  .hsbar { margin-left:auto; display:flex; align-items:center; gap:10px; }
+  #hsStatus { font-size:12px; font-weight:600; } #hsStatus.hs-on { color:var(--yes); } #hsStatus.hs-off { color:var(--hedge); }
+  .hsbtn { font-size:12px; font-weight:700; border:1px solid var(--teal); background:#fff; color:var(--teal-d); border-radius:8px; padding:6px 12px; cursor:pointer; }
+  .hsbtn:hover { background:#ecfdfa; }
 </style>
 </head>
 <body>
@@ -106,7 +111,9 @@
   </div>
 </div>
 <div class="wrap">
-  <header><div class="dot">T</div><h1>Availability Check</h1></header>
+  <header><div class="dot">T</div><h1>Availability Check</h1>
+    <div class="hsbar"><span id="hsStatus" class="hs-off">HubSpot: not connected</span><button type="button" id="hsConnect" class="hsbtn">Connect HubSpot</button></div>
+  </header>
   <p class="sub">Recurring care · can we confirm now, or check with scheduling?</p>
 
   <div class="grid">
@@ -180,7 +187,31 @@
   // Hosted backend (Andrew's vivProxy Azure Function).
   const VIVPROXY = 'https://tribute-api-prod-bkc4hfcwf3f2f6bf.centralus-01.azurewebsites.net/api/vivProxy';
   const CLAUDEPROXY = VIVPROXY.replace('/vivProxy', '/claudeProxy');
+  const HS_BASE = VIVPROXY.replace('/vivProxy', ''); // function-app /api base
   let lastResult = null;
+
+  // --- HubSpot per-user OAuth (opaque session id held in this browser) -------
+  const SID_STORE = 'tribute_hs_sid';
+  function hsSid() {
+    let s = ''; try { s = localStorage.getItem(SID_STORE) || ''; } catch (e) {}
+    if (!s) {
+      s = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Math.random()).slice(2) + Date.now());
+      try { localStorage.setItem(SID_STORE, s); } catch (e) {}
+    }
+    return s;
+  }
+  function setHsStatus(j) {
+    const el = document.getElementById('hsStatus'), btn = document.getElementById('hsConnect');
+    if (!el) return;
+    if (j && j.connected) { el.textContent = 'HubSpot: ' + (j.user || 'connected'); el.className = 'hs-on'; if (btn) btn.textContent = 'Reconnect'; }
+    else { el.textContent = 'HubSpot: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect HubSpot'; }
+  }
+  async function hsWhoami() {
+    try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); return j; }
+    catch (e) { setHsStatus({ connected: false }); return { connected: false }; }
+  }
+  function hsConnect() { window.open(HS_BASE + '/hubspotoauthstart?sid=' + encodeURIComponent(hsSid()), 'hsoauth', 'width=620,height=760'); }
+  window.addEventListener('message', (e) => { if (e && e.data && e.data.hubspotConnected) hsWhoami(); });
 
   // Shared-password gate. Password is entered by the user and kept in this browser
   // only (never in the page source); it's sent as ?key= to the gated endpoint.
@@ -448,6 +479,8 @@
   }
 
   syncCoverage();
+  document.getElementById('hsConnect').onclick = hsConnect;
+  hsWhoami();
 </script>
 </body>
 </html>
