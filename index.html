@@ -258,7 +258,11 @@
     <label>Teams post preview</label>
     <textarea id="d_teams" placeholder="Draft summary for the Teams channel (generated from the notes; editable)."></textarea>
 
-    <button type="button" class="go" id="d_create" style="margin-top:18px;">Create deal &amp; post to Teams</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+      <button type="button" class="go" id="d_create_deal" style="width:auto;margin-top:0;flex:1;min-width:150px">Create HubSpot deal</button>
+      <button type="button" class="go" id="d_post_teams" style="width:auto;margin-top:0;flex:1;min-width:150px">Post to Teams</button>
+      <button type="button" class="go" id="d_create_both" style="width:auto;margin-top:0;flex:1.4;min-width:200px">Create deal &amp; post to Teams</button>
+    </div>
     <div id="d_result"></div>
   </div>
 </div>
@@ -374,12 +378,9 @@
     const days = state.recurrence === 'weekly' ? 'Every day' : [...state.days].sort((a, b) => a - b).map(i => DOW[i]).join(', ');
     return cov + ((cov === 'Days' || cov === '24/7') ? ' (' + dl + ' hours)' : '') + (days ? ' — ' + days : '');
   }
-  async function createDealSubmit() {
-    const res = document.getElementById('d_result');
-    const who = await hsWhoami();
-    if (!who.connected) { res.innerHTML = '<div class="caveat">Connect HubSpot first (top-right), then try again.</div>'; hsConnect(); return; }
+  function dealBody() {
     const addr = document.getElementById('client_address').value;
-    const body = {
+    return {
       dealname: dval('d_dealname'),
       start_date: document.getElementById('start_date').value,
       schedule_requested: dval('d_schedule') || scheduleRequestedText(),
@@ -394,31 +395,36 @@
       client_gender: dval('d_client_gender'), client_dob: dval('d_client_dob'),
       referred_by_: dval('d_referred_by'), amount: dval('d_amount').replace(/[^0-9.]/g, ''), notes: dval('d_notes'),
     };
-    const btn = document.getElementById('d_create');
-    btn.disabled = true; btn.textContent = 'Creating…'; res.innerHTML = '';
+  }
+  const actionBtns = () => ['d_create_deal', 'd_post_teams', 'd_create_both'].map(id => document.getElementById(id)).filter(Boolean);
+
+  // doDeal / doTeams flags drive the three buttons (HubSpot only · Teams only · both).
+  async function submitLead(doDeal, doTeams) {
+    const res = document.getElementById('d_result');
+    res.innerHTML = ''; actionBtns().forEach(b => b.disabled = true);
+    let msg = '';
     try {
-      const r = await fetch(HS_BASE + '/hubspotcreatedeal?sid=' + encodeURIComponent(hsSid()), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      });
-      const j = await r.json();
-      if (j.ok) {
-        let msg = '<div class="ok">✓ Deal created — owned by ' + esc(j.owner || who.user) + '. <a href="' + esc(j.url) + '" target="_blank">Open in HubSpot ↗</a></div>';
-        const teamId = dval('d_team'), chId = dval('d_channel'), teamsText = dval('d_teams');
-        if (teamId && chId && teamsText) {
-          try {
-            await postToTeams(teamId, chId, teamsText);
-            const cn = document.getElementById('d_channel');
-            msg += '<div class="ok">✓ Posted to Teams' + (cn && cn.selectedOptions[0] ? ' — ' + esc(cn.selectedOptions[0].text) : '') + '.</div>';
-          } catch (e) { msg += '<div class="caveat">Deal created, but Teams post failed: ' + esc(e.message) + '</div>'; }
-        } else if (teamsText) {
-          msg += '<div class="muted">Teams post skipped — sign in with Microsoft and pick a team + channel.</div>';
-        }
-        res.innerHTML = msg;
+      if (doDeal) {
+        const who = await hsWhoami();
+        if (!who.connected) { res.innerHTML = '<div class="caveat">Connect HubSpot first (top-right), then try again.</div>'; hsConnect(); return; }
+        const r = await fetch(HS_BASE + '/hubspotcreatedeal?sid=' + encodeURIComponent(hsSid()), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dealBody()) });
+        const j = await r.json();
+        if (j.ok) msg += '<div class="ok">✓ Deal created — owned by ' + esc(j.owner || who.user) + '. <a href="' + esc(j.url) + '" target="_blank">Open in HubSpot ↗</a></div>';
+        else if (j.error === 'not_connected') { res.innerHTML = '<div class="caveat">HubSpot session expired — reconnect (top-right).</div>'; hsConnect(); return; }
+        else msg += '<div class="caveat"><b>Could not create deal:</b> ' + esc(j.error || 'unknown') + (j.detail ? ' — ' + esc(j.detail) : '') + '</div>';
       }
-      else if (j.error === 'not_connected') { res.innerHTML = '<div class="caveat">HubSpot session expired — reconnect (top-right).</div>'; hsConnect(); }
-      else res.innerHTML = '<div class="caveat"><b>Could not create deal:</b> ' + esc(j.error || 'unknown') + (j.detail ? ' — ' + esc(j.detail) : '') + '</div>';
+      if (doTeams) {
+        const teamId = dval('d_team'), chId = dval('d_channel'), teamsText = dval('d_teams');
+        if (!teamId || !chId) msg += '<div class="caveat">Pick a team and channel to post to Teams.</div>';
+        else if (!teamsText) msg += '<div class="caveat">Teams preview is empty — nothing to post.</div>';
+        else {
+          try { await postToTeams(teamId, chId, teamsText); const cn = document.getElementById('d_channel'); msg += '<div class="ok">✓ Posted to Teams' + (cn && cn.selectedOptions[0] ? ' — ' + esc(cn.selectedOptions[0].text) : '') + '.</div>'; }
+          catch (e) { msg += '<div class="caveat">Teams post failed: ' + esc(e.message) + '</div>'; }
+        }
+      }
+      res.innerHTML = msg;
     } catch (e) { res.innerHTML = '<div class="caveat">Request failed: ' + esc(e.message) + '</div>'; }
-    finally { btn.disabled = false; btn.textContent = 'Create deal & post to Teams'; }
+    finally { actionBtns().forEach(b => b.disabled = false); }
   }
 
   // --- AI parse: one notes box -> availability intake + deal form + Teams draft
@@ -760,7 +766,9 @@
   document.getElementById('msSignin').onclick = msSignIn;
   document.getElementById('d_team').onchange = (e) => loadChannels(e.target.value);
   document.getElementById('d_parse').onclick = parseNotes;
-  document.getElementById('d_create').onclick = createDealSubmit;
+  document.getElementById('d_create_deal').onclick = () => submitLead(true, false);
+  document.getElementById('d_post_teams').onclick = () => submitLead(false, true);
+  document.getElementById('d_create_both').onclick = () => submitLead(true, true);
   hsWhoami();
   initMsal();
 </script>
