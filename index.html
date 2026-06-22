@@ -288,7 +288,7 @@
       client_phone: dval('d_client_phone'), client_email: dval('d_client_email'),
       client_city: dval('d_client_city'), client_state: dval('d_client_state'),
       client_gender: dval('d_client_gender'), client_dob: dval('d_client_dob'),
-      referred_by_: dval('d_referred_by'), amount: dval('d_amount'), notes: dval('d_notes'),
+      referred_by_: dval('d_referred_by'), amount: dval('d_amount').replace(/[^0-9.]/g, ''), notes: dval('d_notes'),
     };
     const btn = document.getElementById('d_create');
     btn.disabled = true; btn.textContent = 'Creating…'; res.innerHTML = '';
