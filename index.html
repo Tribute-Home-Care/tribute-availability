@@ -69,6 +69,29 @@
   .gatecard input { width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:9px; font-size:14px; }
   .gatecard button { margin-top:12px; width:100%; padding:11px; border:0; border-radius:10px; background:var(--teal); color:#fff; font-weight:700; cursor:pointer; }
   .gateerr { color:#b91c1c; font-size:12px; margin-top:8px; min-height:14px; }
+  /* RYG grid + answer + follow-up */
+  .answer { margin:14px 0; padding:14px 16px; border-radius:12px; background:#ecfdfa; border:1px solid #b9e7e0; }
+  .answer .lab, .qa .lab { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--teal-d); margin-bottom:5px; }
+  .abx { font-size:16px; font-weight:600; line-height:1.45; color:var(--ink); min-height:22px; }
+  .abx .think { color:var(--muted); font-weight:400; font-size:14px; }
+  table.ryg { border-collapse:separate; border-spacing:5px; margin:8px 0 6px; }
+  table.ryg th { font-size:11px; color:var(--muted); font-weight:600; padding:0 2px 2px; text-align:center; }
+  table.ryg td.rlab { text-align:left; font-weight:700; font-size:12px; color:var(--ink); padding-right:8px; white-space:nowrap; }
+  .cell { width:42px; height:34px; border-radius:8px; display:grid; place-items:center; font-size:12px; font-weight:800; color:#fff; }
+  .cell.green { background:#16794f; } .cell.yellow { background:#d4920a; } .cell.red { background:#dc2626; }
+  .cell.nr { opacity:.22; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--muted); margin:2px 0 8px; }
+  .legend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+  .legend i.green{background:#16794f;} .legend i.yellow{background:#d4920a;} .legend i.red{background:#dc2626;}
+  .notg { margin:8px 0 4px; background:#fdf6e3; border:1px solid #f3e2b3; border-radius:10px; padding:11px 14px; font-size:13px; color:var(--hedge); }
+  .notg b { display:block; margin-bottom:5px; } .notg ul { margin:0; padding-left:18px; } .notg li { margin:2px 0; }
+  .ok { margin:8px 0 4px; background:var(--yes-bg); border:1px solid #bce4cf; border-radius:10px; padding:11px 14px; font-size:13px; color:var(--yes); font-weight:600; }
+  .qa { margin-top:16px; border-top:1px solid var(--line); padding-top:14px; }
+  .qarow { display:flex; gap:8px; }
+  .qarow input { flex:1; padding:9px 11px; border:1px solid var(--line); border-radius:9px; font-size:14px; }
+  .qabtn { padding:9px 16px; border:0; border-radius:9px; background:var(--teal); color:#fff; font-weight:700; cursor:pointer; }
+  .qalog .q { font-weight:700; margin-top:8px; } .qalog .a { margin:3px 0 6px; color:var(--muted); }
+  .toggle { margin-top:16px; background:none; border:1px solid var(--line); border-radius:9px; padding:8px 13px; font-size:13px; font-weight:600; color:var(--teal-d); cursor:pointer; }
 </style>
 </head>
 <body>
@@ -156,6 +179,8 @@
 <script>
   // Hosted backend (Andrew's vivProxy Azure Function).
   const VIVPROXY = 'https://tribute-api-prod-bkc4hfcwf3f2f6bf.centralus-01.azurewebsites.net/api/vivProxy';
+  const CLAUDEPROXY = VIVPROXY.replace('/vivProxy', '/claudeProxy');
+  let lastResult = null;
 
   // Shared-password gate. Password is entered by the user and kept in this browser
   // only (never in the page source); it's sent as ?key= to the gated endpoint.
@@ -269,7 +294,10 @@
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
       });
       if (res.status === 401) { clearKey(); showGate('Wrong password — try again.'); out.innerHTML=''; return; }
-      out.innerHTML = render(await res.json());
+      const d = await res.json();
+      lastResult = d;
+      out.innerHTML = render(d);
+      wireResult(d);
     } catch (err) {
       out.innerHTML = '<div class="caveat">Request failed: '+esc(err.message)+'</div>';
     } finally {
@@ -277,34 +305,146 @@
     }
   });
 
-  function render(d) {
-    if (d.error) return '<div class="caveat"><b>'+esc(d.error)+'</b></div>';
-    const yes = d.decision === 'YES';
-    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ Check with scheduling')+'</div>';
-    h += '<div class="tell"><div class="lab">Tell caller</div><div class="scr">“'+esc(d.lead_taker_script)+'”</div></div>';
-    h += '<div class="foot">'+esc(d.coverage)+' · '+esc(d.days_per_week)+' day(s)/week · '+esc(d.caregivers_local)+' local'
-       + (d.caregivers_extended!=null?' · '+esc(d.caregivers_extended)+' extended':'')+' · '+esc(d.response_time_ms||'')+'</div>';
-    if (d.shift_coverage && d.shift_coverage.length) {
-      h += '<div class="shifts">' + d.shift_coverage.map(s =>
-        '<div class="sc"><div class="t">'+esc(s.shift)+' — '+esc(s.coverage)+'</div><div class="c">'+(s.days_covered||[]).join(' ')+'</div></div>').join('') + '</div>';
+  const rowLabel = r => (r === 'Night' ? 'Overnight' : r);
+
+  function rygGridHTML(g) {
+    if (!g || !g.rows || !g.rows.length) return '';
+    let h = '<table class="ryg"><tr><th></th>' + DOW.map(d => '<th>'+d+'</th>').join('') + '</tr>';
+    for (const row of g.rows) {
+      h += '<tr><td class="rlab">'+esc(rowLabel(row.row))+'</td>';
+      for (const cell of row.cells) {
+        const cls = 'cell ' + cell.color + (cell.requested ? '' : ' nr');
+        const txt = cell.color === 'red' ? '' : String(cell.net_free);
+        const title = cell.label + ': ' + cell.local + ' local free'
+          + (cell.competing_demand ? ', ' + cell.competing_demand + ' open booking set(s)' : '')
+          + (cell.extended ? ', ' + cell.extended + ' beyond 20mi' : '')
+          + (cell.requested ? '' : ' — not requested');
+        h += '<td><div class="'+cls+'" title="'+esc(title)+'">'+txt+'</div></td>';
+      }
+      h += '</tr>';
     }
+    h += '</table><div class="legend"><span><i class="green"></i>Guaranteed</span><span><i class="yellow"></i>Not guaranteed</span><span><i class="red"></i>None</span><span>· numbers = caregivers free after open demand</span></div>';
+    return h;
+  }
+
+  function notGuaranteedHTML(g) {
+    if (!g) return '';
+    if (!g.not_guaranteed || !g.not_guaranteed.length) return '<div class="ok">✓ Every requested day &amp; night is guaranteed.</div>';
+    const items = g.not_guaranteed.map(x => '<li><b>'+esc(rowLabel(x.row))+' · '+esc(x.day)+'</b> — '+esc(x.why)+'</li>').join('');
+    return '<div class="notg"><b>⚠️ Not guaranteed</b><ul>'+items+'</ul></div>';
+  }
+
+  // Deterministic fallback answer (used if Claude is unreachable/unconfigured).
+  function deterministicAnswer(d) {
+    const g = d.ryg_grid;
+    if (!g || !g.rows) return d.message || '';
+    const parts = [];
+    for (const row of g.rows) {
+      const req = row.cells.filter(c => c.requested);
+      if (!req.length) continue;
+      const lbl = row.row === 'Night' ? 'overnights' : row.row === 'Live-in' ? 'live-in' : 'days';
+      const green = req.filter(c => c.color === 'green').map(c => c.label);
+      const notg = req.filter(c => c.color !== 'green').map(c => c.label);
+      if (green.length === req.length) parts.push('All ' + lbl + ' covered');
+      else if (green.length) parts.push('Guaranteed ' + lbl + ': ' + green.join(', '));
+      if (notg.length) parts.push('not guaranteed ' + lbl + ': ' + notg.join(', '));
+    }
+    return parts.join('; ') + '.';
+  }
+
+  // Collapsed "who can do it" detail — caregiver specifics live here, not up top.
+  function whoHTML(d) {
+    let h = '<div class="tell"><div class="lab">Tell caller</div><div class="scr">“'+esc(d.lead_taker_script)+'”</div></div>';
     if (d.recommended_team && d.recommended_team.length) {
       h += '<div class="team">' + d.recommended_team.map(m =>
-        '<div class="member"><div class="sh">'+esc(m.shift)+'</div><div class="nm">'+esc(m.name)+(m.is_driver?' 🚗':'')+'</div>'
+        '<div class="member"><div class="sh">'+esc(rowLabel(m.shift))+'</div><div class="nm">'+esc(m.name)+(m.is_driver?' 🚗':'')+'</div>'
         + '<div class="meta">'+esc(m.weekly_coverage)+' of days · '+esc(m.distance_miles)+' mi</div>'
         + '<div class="meta">'+(m.days_covered||[]).join(' ')+'</div></div>').join('') + '</div>';
     }
     if (d.candidates && d.candidates.length) {
-      h += '<table><tr><th>Shift</th><th>Caregiver</th><th>Dist</th><th>Open days</th></tr>';
-      for (const c of d.candidates) h += '<tr><td>'+esc(c.shift)+'</td><td>'+esc(c.name)+(c.is_driver?' <span class="pill">🚗</span>':'')
+      h += '<table><tr><th>Visit</th><th>Caregiver</th><th>Dist</th><th>Open days</th></tr>';
+      for (const c of d.candidates) h += '<tr><td>'+esc(rowLabel(c.shift))+'</td><td>'+esc(c.name)+(c.is_driver?' <span class="pill">🚗</span>':'')
         + '</td><td>'+esc(c.distance_miles)+' mi</td><td>'+(c.days_covered||[]).join(' ')+'</td></tr>';
       h += '</table>';
     }
-    if (d.gaps && d.gaps.length) h += '<div class="redflag">🚩 <b>Not all requested days are covered</b><ul>'+d.gaps.map(g=>'<li>'+esc(g)+'</li>').join('')+'</ul></div>';
     if (d.extended_options && d.extended_options.length)
-      h += '<div class="foot">Extended options: '+d.extended_options.map(o=>esc(o.name)+' ('+esc(o.distance_miles)+' mi)').join(', ')+'</div>';
-    if (d.reason && !yes) h += '<div class="foot">Reason: '+esc(d.reason)+'</div>';
+      h += '<div class="foot">Beyond 20mi: '+d.extended_options.map(o=>esc(o.name)+' ('+esc(o.distance_miles)+' mi)').join(', ')+'</div>';
     return h;
+  }
+
+  function render(d) {
+    if (d.error) return '<div class="caveat"><b>'+esc(d.error)+'</b></div>';
+    const yes = d.decision === 'YES';
+    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ Check with scheduling')+'</div>';
+    h += '<div class="answer"><div class="lab">The answer</div><div id="answerBox" class="abx"><span class="think">Summarizing…</span></div></div>';
+    h += rygGridHTML(d.ryg_grid);
+    h += notGuaranteedHTML(d.ryg_grid);
+    h += '<div class="qa"><div class="lab">Ask a follow-up</div><div id="qaLog" class="qalog"></div>'
+       + '<form id="qaForm" class="qarow"><input id="qaInput" type="text" placeholder="e.g. What about Thursday overnights?" autocomplete="off" /><button class="qabtn" type="submit">Ask</button></form></div>';
+    h += '<button type="button" class="toggle" id="showWho">Show who can do it ▾</button>';
+    h += '<div id="whoWrap" class="hide">'+whoHTML(d)+'</div>';
+    h += '<div class="foot">'+esc(d.coverage)+' · '+esc(d.days_per_week)+' day(s)/week · '+esc(d.caregivers_local)+' local'
+       + (d.caregivers_extended!=null?' · '+esc(d.caregivers_extended)+' beyond 20mi':'')
+       + (d.open_demand_total!=null?' · '+esc(d.open_demand_total)+' open booking sets netted':'')+'</div>';
+    return h;
+  }
+
+  // Slim the grid for the LLM: only requested cells, only the fields it needs.
+  function gridForLLM(d) {
+    const g = d.ryg_grid || {};
+    return {
+      decision: d.decision, coverage: d.coverage,
+      rows: (g.rows||[]).map(r => ({ row: rowLabel(r.row),
+        cells: r.cells.filter(c => c.requested).map(c => ({ day: c.label, color: c.color, free: c.net_free, open_demand: c.competing_demand })) })),
+      not_guaranteed: g.not_guaranteed,
+    };
+  }
+
+  async function callClaude(system, userText, maxTokens) {
+    const r = await fetch(CLAUDEPROXY, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: maxTokens||300, system, messages:[{ role:'user', content:userText }] }) });
+    if (!r.ok) throw new Error('claude '+r.status);
+    const j = await r.json();
+    return (j.content && j.content[0] && j.content[0].text) || '';
+  }
+
+  async function narrate(d) {
+    const box = document.getElementById('answerBox'); if (!box) return;
+    const fallback = deterministicAnswer(d);
+    try {
+      const sys = 'You are Tribute Home Care\'s availability assistant for the scheduling team. Given a coverage grid for a prospective recurring-care client, tell the lead-taker in 1–2 plain sentences what we can staff. Tribute house language: always say "visit" or "visits", never "shift"; say "days" and "overnights". Name which days/overnights are covered vs NOT guaranteed. Never list caregiver names or counts. Colours: green = guaranteed (2+ caregivers free after open demand), yellow = not guaranteed (one caregiver, or open demand competing), red = no coverage.';
+      const txt = await callClaude(sys, 'Coverage grid:\n'+JSON.stringify(gridForLLM(d))+'\n\nGive the 1–2 sentence answer.', 300);
+      box.innerHTML = esc(txt.trim() || fallback);
+    } catch (e) { box.innerHTML = esc(fallback); }
+  }
+
+  async function askFollowup(d, q) {
+    try {
+      const sys = 'You are Tribute Home Care\'s availability assistant. Answer the scheduler\'s question using ONLY the coverage grid provided. 1–2 sentences, plain. House language: say "visit"/"visits", never "shift". Never invent caregiver names. If the grid does not cover the question, say to check with the scheduling team.';
+      return await callClaude(sys, 'Coverage grid:\n'+JSON.stringify(gridForLLM(d))+'\nClient request: '+(d.coverage||'')+'.\nQuestion: '+q, 300);
+    } catch (e) { return 'Could not reach the assistant — check with the scheduling team.'; }
+  }
+
+  function wireResult(d) {
+    narrate(d);
+    const tog = document.getElementById('showWho');
+    if (tog) tog.onclick = () => {
+      const w = document.getElementById('whoWrap');
+      const hidden = w.classList.toggle('hide');
+      tog.textContent = hidden ? 'Show who can do it ▾' : 'Hide who can do it ▴';
+    };
+    const qf = document.getElementById('qaForm');
+    if (qf) qf.onsubmit = async (e) => {
+      e.preventDefault();
+      const inp = document.getElementById('qaInput');
+      const q = (inp.value || '').trim(); if (!q) return;
+      const log = document.getElementById('qaLog');
+      log.insertAdjacentHTML('beforeend', '<div class="q">'+esc(q)+'</div><div class="a" id="qaPending">…</div>');
+      inp.value = '';
+      const ans = await askFollowup(d, q);
+      const p = document.getElementById('qaPending');
+      if (p) { p.removeAttribute('id'); p.textContent = ans; }
+    };
   }
 
   syncCoverage();
