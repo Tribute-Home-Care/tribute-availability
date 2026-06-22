@@ -254,12 +254,45 @@
       <div class="colspan"><label>General summary / reason for service</label><textarea id="d_notes"></textarea></div>
       <div class="colspan"><label>Follow-up / scheduling ideas</label><input type="text" id="d_followup" autocomplete="off" /></div>
     </div>
+    <div id="d_outcome"></div>
+
+    <div class="fieldsub">Source &amp; referral</div>
+    <div class="dealgrid">
+      <div><label>Lead source</label><select id="d_lead_source"></select></div>
+      <div><label>Market / region</label><select id="d_market_region"></select></div>
+      <div><label>Deal type</label><select id="d_dealtype"><option value="newbusiness" selected>New Business</option><option value="existingbusiness">Existing Business</option></select></div>
+      <div><label>Lead taken by</label><select id="d_lead_taken_by"></select></div>
+      <div><label>Referral source thanked?</label><select id="d_thanked"><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select></div>
+      <div><label>If not thanked — the plan</label><input type="text" id="d_thank_plan" autocomplete="off" /></div>
+    </div>
+
+    <div class="fieldsub">Care logistics</div>
+    <div class="dealgrid">
+      <div><label>End date of service</label><input type="date" id="d_end_date" /></div>
+      <div><label>How to charge</label><input type="text" id="d_how_to_charge" autocomplete="off" /></div>
+      <div><label>Caregiver match</label><input type="text" id="d_caregiver_match" autocomplete="off" /></div>
+      <div><label>Holiday / 24-hr cancellation policies reviewed?</label><select id="d_policies"><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select></div>
+    </div>
+    <label>Home environment</label>
+    <div class="chips" id="d_home_env"></div>
+
+    <div class="fieldsub">Call &amp; client detail</div>
+    <div class="dealgrid">
+      <div><label>Tone of call</label><select id="d_tone"><option value="">—</option><option>Calm</option><option>Stressed</option><option>Skeptical</option><option>Rushed</option></select></div>
+      <div><label>Next steps</label><input type="text" id="d_next_steps" autocomplete="off" /></div>
+    </div>
+    <label>Details about client (personality, interests, history)</label>
+    <textarea id="d_client_details"></textarea>
+    <label>Deal description</label>
+    <textarea id="d_description"></textarea>
 
     <div class="fieldsub">Post to Teams</div>
     <div class="dealgrid">
       <div><label>Team</label><select id="d_team"><option value="">— sign in with Microsoft —</option></select></div>
       <div><label>Channel</label><select id="d_channel"><option value="">—</option></select></div>
     </div>
+    <label>Teams post subject</label>
+    <input type="text" id="d_teams_subject" autocomplete="off" placeholder="e.g. LEAD — Newbury (Jan &amp; Bill)" />
     <label>Teams post preview</label>
     <textarea id="d_teams" placeholder="Draft summary for the Teams channel (generated from the notes; editable)."></textarea>
 
@@ -296,7 +329,7 @@
     else { el.textContent = 'HubSpot: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect HubSpot'; }
   }
   async function hsWhoami() {
-    try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); return j; }
+    try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected && j.ownerId) setSelectVal('d_lead_taken_by', String(j.ownerId)); return j; }
     catch (e) { setHsStatus({ connected: false }); return { connected: false }; }
   }
   function hsConnect() { window.open(HS_BASE + '/hubspotoauthstart?sid=' + encodeURIComponent(hsSid()), 'hsoauth', 'width=620,height=760'); }
@@ -365,12 +398,14 @@
       sel.innerHTML = '<option value="">— choose a channel —</option>' + (j.value || []).map(c => '<option value="' + esc(c.id) + '">' + esc(c.displayName) + '</option>').join('');
     } catch (e) { sel.innerHTML = '<option value="">— could not load channels —</option>'; }
   }
-  async function postToTeams(teamId, channelId, text) {
+  async function postToTeams(teamId, channelId, text, subject) {
     const token = await graphToken(); if (!token) throw new Error('not signed in to Microsoft');
     const html = esc(text).replace(/\n/g, '<br>');
+    const payload = { body: { contentType: 'html', content: html } };
+    if (subject) payload.subject = subject;
     const r = await fetch('https://graph.microsoft.com/v1.0/teams/' + teamId + '/channels/' + channelId + '/messages', {
       method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: { contentType: 'html', content: html } }),
+      body: JSON.stringify(payload),
     });
     if (!r.ok) { const t = await r.text(); throw new Error('Teams ' + r.status + ' ' + t.slice(0, 120)); }
     return r.json();
@@ -383,6 +418,40 @@
     const days = state.recurrence === 'weekly' ? 'Every day' : [...state.days].sort((a, b) => a - b).map(i => DOW[i]).join(', ');
     return cov + ((cov === 'Days' || cov === '24/7') ? ' (' + dl + ' hours)' : '') + (days ? ' — ' + days : '');
   }
+  // --- deal-field option lists (from HubSpot property defs) ------------------
+  const LEAD_SOURCES = ['Assisted Living', 'Geriatric Care Manager (GCM)', 'Home Health Care', 'Hospice', 'Hospital', 'Independent Living', 'Physician', 'Skilled Nursing Facility / Rehab', 'Tribute Employee', 'Tribute Client', 'Website', 'Unknown', 'Professional (non-medical)'];
+  const MARKET_REGIONS = ['BOS', 'MWB', 'NB', 'SB', 'BAL', 'ANN', 'BET', 'NVA', 'CHI', 'NNJ'];
+  const HOME_ENV = ['Cats in Home', 'Dogs in Home', 'No Pets in Home', 'Smokers in Home', 'Non-Smokers in Home', 'Parking Available', 'No Parking Available'];
+  const LEAD_TAKERS = [['4704633', 'Nathanael Yellis'], ['75917307', 'Andrew White'], ['78839811', 'Tina Merklinger'], ['80679459', 'Kellie Tartaglia'], ['80951541', 'Ramya Ramakrishna'], ['81779193', 'Grant Lemanski'], ['82566013', 'Truett Bloxsom'], ['82959955', 'Kimberly Johnson'], ['85280887', 'Bronwyn Carmel'], ['85652082', 'Emily Willson'], ['87642142', 'Patricia Huerta'], ['87642216', 'Meghan Daly'], ['87642387', 'Shanaye Stone'], ['87642388', 'Alisha Harvin'], ['87642389', 'Khadijah Bangura'], ['91616754', 'Princilla Minkah'], ['105586198', 'Brian Cavoli'], ['141784903', 'Eric Sloan'], ['142105601', 'Tory McBride'], ['142108200', 'Jen Kulig'], ['142596385', 'Galip Gencer'], ['142598251', 'Jada Tiglao'], ['142598253', 'Charlotte Brown'], ['142734157', 'Chelsea Hancock'], ['142734158', 'Andrew Dobson'], ['142734159', 'Shaina Powers'], ['142760711', 'Jennifer Robinson'], ['142761217', 'Jennifer Schweizer'], ['143274020', 'Rachel Kruger'], ['143274021', 'Michelle Hejduk'], ['146410414', 'Jennifer Shapiro'], ['146985002', 'Jillian Brown'], ['169550420', 'Jeanine Desatnick'], ['169551725', "Tom O'Brien"], ['190811666', 'Brianna Rodriguez'], ['193156501', 'Ashley Lewis'], ['206618014', 'Dova Weinberger'], ['206618239', 'Awet Tesfahun'], ['233781377', 'Colin Fields'], ['234590581', 'Carrie Faerber'], ['262669399', 'William Snieder'], ['451979924', 'Cori Denenberg'], ['489741073', 'Haley MacBain'], ['530839366', 'Courtney Chaulk'], ['562892370', 'Tracy DuBois'], ['571439891', 'Brenda Kruger']];
+  const WON_OPP_CAT = ['Met all their service needs', 'Could not provide daytime care on Sundays', 'Could not meet some days', 'Could not meet some overnights', 'Referred to another agency for nights', 'Referred to another agency for days', 'Converted to Live-In from hourly request', 'Converted to hourly from Live-In request', 'Other'];
+  const TURNDOWN = ['Out of Service Area', 'Requesting Service We Dont Offer', 'No Budget', 'Client Behavior', 'Condition of House', 'Safety Concern', 'Short Hour Requirement', 'Other Reason (explain below)'];
+  const UNQUAL = ['Out of Service Area', 'Requesting Service We Dont Offer', 'No Budget'];
+  const UTF = ['Cannot serve location, in service area', 'Limited weekend availability', 'Limited overnight availability', 'Limited daytime availability', 'No live-in caregivers available', 'Requires a male', 'Pets in home', 'Special caregiver skill needed', 'Other'];
+  const optList = (arr) => '<option value="">—</option>' + arr.map(s => '<option>' + esc(s) + '</option>').join('');
+
+  function initDealSelects() {
+    const ls = document.getElementById('d_lead_source'); if (ls) ls.innerHTML = optList(LEAD_SOURCES);
+    const mr = document.getElementById('d_market_region'); if (mr) mr.innerHTML = optList(MARKET_REGIONS);
+    const lt = document.getElementById('d_lead_taken_by'); if (lt) lt.innerHTML = '<option value="">—</option>' + LEAD_TAKERS.map(o => '<option value="' + o[0] + '">' + esc(o[1]) + '</option>').join('');
+    const he = document.getElementById('d_home_env');
+    if (he) { he.innerHTML = HOME_ENV.map(s => '<span class="chip" data-v="' + esc(s) + '">' + esc(s) + '</span>').join(''); he.querySelectorAll('.chip').forEach(c => c.onclick = () => c.classList.toggle('on')); }
+  }
+  const homeEnvValue = () => [...document.querySelectorAll('#d_home_env .chip.on')].map(c => c.dataset.v).join(';');
+  function setHomeEnv(arr) { if (!Array.isArray(arr)) return; const s = new Set(arr); document.querySelectorAll('#d_home_env .chip').forEach(c => c.classList.toggle('on', s.has(c.dataset.v))); }
+
+  // Stage-driven outcome fields: pick Closed-Won / Lost / Turndown / Unable-to-Fill -> matching reason fields.
+  function syncStage() {
+    const v = dval('d_stage'), box = document.getElementById('d_outcome'); if (!box) return;
+    const fld = (lab, inner) => '<div><label>' + lab + '</label>' + inner + '</div>';
+    const sel = (id, arr) => '<select id="' + id + '">' + optList(arr) + '</select>';
+    let h = '';
+    if (v === 'closedwon') h = fld('Closed-won reason', '<input type="text" id="o_won_reason" autocomplete="off">') + fld('Opportunity category', sel('o_won_oppcat', WON_OPP_CAT)) + fld('Opportunity value (lost weekly $)', '<input type="text" id="o_won_oppval" inputmode="decimal" autocomplete="off">');
+    else if (v === 'closedlost') h = fld('Lost reason', '<input type="text" id="o_lost_reason" autocomplete="off">') + fld('Unqualified reason', sel('o_unqual', UNQUAL));
+    else if (v === '12704675') h = fld('Turndown reason', sel('o_turndown', TURNDOWN)) + fld('Turndown “Other” explanation', '<input type="text" id="o_turndown_other" autocomplete="off">');
+    else if (v === '3665246' || v === '143971688') h = fld('UTF reason category', sel('o_utf', UTF));
+    box.innerHTML = h ? '<div class="fieldsub">Outcome detail</div><div class="dealgrid">' + h + '</div>' : '';
+  }
+
   function dealBody() {
     const addr = document.getElementById('client_address').value;
     return {
@@ -400,6 +469,16 @@
       client_city: dval('d_client_city'), client_state: dval('d_client_state'),
       client_gender: dval('d_client_gender'), client_dob: dval('d_client_dob'),
       referred_by_: dval('d_referred_by'), amount: dval('d_amount').replace(/[^0-9.]/g, ''), notes: dval('d_notes'),
+      dealtype: dval('d_dealtype'), end_date_of_service: dval('d_end_date'),
+      lead_source: dval('d_lead_source'), market_region: dval('d_market_region'), lead_taken_by: dval('d_lead_taken_by'),
+      how_to_charge: dval('d_how_to_charge'), caregiver_match: dval('d_caregiver_match'), home_environment: homeEnvValue(),
+      holiday_and_24_hour_cancellation_policies_reviewed: dval('d_policies'),
+      was_referral_source_thanked_: dval('d_thanked'), if_referral_source_was_not_thanked__what_is_the_plan_: dval('d_thank_plan'),
+      tone_of_call: dval('d_tone'), client_solutions_followup: dval('d_next_steps'),
+      details_about_client__personality__interests__behaviors__social_history: dval('d_client_details'), description: dval('d_description'),
+      closed_won_reason: dval('o_won_reason'), closed_won__opportunity_category: dval('o_won_oppcat'), closed_won__opportunity_value: dval('o_won_oppval').replace(/[^0-9.]/g, ''),
+      closed_lost_reason: dval('o_lost_reason'), unqualified_reason: dval('o_unqual'),
+      turndown_reason: dval('o_turndown'), turndown_reason__other___explanation: dval('o_turndown_other'), utf_reason_category: dval('o_utf'),
     };
   }
   const actionBtns = () => ['d_create_deal', 'd_post_teams', 'd_create_both'].map(id => document.getElementById(id)).filter(Boolean);
@@ -424,7 +503,7 @@
         if (!teamId || !chId) msg += '<div class="caveat">Pick a team and channel to post to Teams.</div>';
         else if (!teamsText) msg += '<div class="caveat">Teams preview is empty — nothing to post.</div>';
         else {
-          try { await postToTeams(teamId, chId, teamsText); const cn = document.getElementById('d_channel'); msg += '<div class="ok">✓ Posted to Teams' + (cn && cn.selectedOptions[0] ? ' — ' + esc(cn.selectedOptions[0].text) : '') + '.</div>'; }
+          try { await postToTeams(teamId, chId, teamsText, dval('d_teams_subject')); const cn = document.getElementById('d_channel'); msg += '<div class="ok">✓ Posted to Teams' + (cn && cn.selectedOptions[0] ? ' — ' + esc(cn.selectedOptions[0].text) : '') + '.</div>'; }
           catch (e) { msg += '<div class="caveat">Teams post failed: ' + esc(e.message) + '</div>'; }
         }
       }
@@ -471,7 +550,14 @@
     setInputVal('d_amount', f.amount != null ? String(f.amount) : ''); setInputVal('d_referred_by', f.referred_by_);
     setInputVal('d_schedule', f.schedule_requested); setSelectVal('d_location', f.location_of_care);
     setInputVal('d_notes', f.notes); setInputVal('d_followup', f.scheduling_follow_up);
-    setInputVal('d_dealname', p.dealname); setInputVal('d_teams', p.teams_summary);
+    setInputVal('d_dealname', p.dealname); setInputVal('d_teams', p.teams_summary); setInputVal('d_teams_subject', p.teams_subject);
+    setSelectVal('d_lead_source', f.lead_source); setSelectVal('d_market_region', f.market_region); setSelectVal('d_dealtype', f.dealtype);
+    setSelectVal('d_tone', f.tone_of_call); setSelectVal('d_thanked', f.was_referral_source_thanked_); setSelectVal('d_policies', f.holiday_and_24_hour_cancellation_policies_reviewed);
+    setInputVal('d_end_date', f.end_date_of_service); setInputVal('d_how_to_charge', f.how_to_charge); setInputVal('d_caregiver_match', f.caregiver_match);
+    setInputVal('d_thank_plan', f.if_referral_source_was_not_thanked__what_is_the_plan_); setInputVal('d_next_steps', f.client_solutions_followup);
+    setInputVal('d_client_details', f.details_about_client__personality__interests__behaviors__social_history); setInputVal('d_description', f.description);
+    if (Array.isArray(f.home_environment)) setHomeEnv(f.home_environment);
+    if (Array.isArray(a.restrictions)) { state.restrictions = new Set(a.restrictions); document.querySelectorAll('#checks .chip').forEach(c => c.classList.toggle('on', state.restrictions.has(c.dataset.v))); }
     const um = document.getElementById('d_unmapped');
     if (um) um.innerHTML = (p.unmapped && p.unmapped.length) ? '⚠ Not auto-filled — handle manually: ' + p.unmapped.map(esc).join(' · ') : '';
   }
@@ -480,10 +566,10 @@
     const now = new Date();
     const wd = now.toLocaleDateString('en-US', { weekday: 'long' });
     const iso = now.toISOString().slice(0, 10);
-    return 'You parse a home-care lead-taker\'s free-text notes into (1) an availability-check intake, (2) a HubSpot deal, and (3) a Teams summary for Tribute Home Care. Return ONLY valid JSON (no prose, no markdown fences): {"dealname":str,"availability":{...},"fields":{...},"teams_summary":str,"unmapped":[str]}.\n'
-      + 'availability keys (omit if unknown): coverage one of [Days, Overnights, 24/7, Live-in]; day_length one of [Long, Short] (Short = under ~5h/visit); recurrence one of [weekly, specific]; days_of_week array of ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address for the availability check — at least town + state (infer from the venue if needed); start_date YYYY-MM-DD; gender_preference one of [male, female] (omit if either/no preference).\n'
-      + 'fields keys (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client one of [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender one of [Female, Male]; client_dob; location_of_care one of [Private Home, Residence (non Brightview), Residence (Brightview)] (Private Home = a private house/apartment; Residence (Brightview) = a Brightview-branded community; Residence (non Brightview) = any other senior-living community/facility — put the street address in availability.address, NOT here); service_level one of [A,B,C,D,Live-In] (WEEKLY hours band A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day one of ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); schedule_requested; referred_by_; amount (number only); notes (clean General Summary); scheduling_follow_up.\n'
-      + 'teams_summary: 3-5 line plain-text Teams channel post; say "visit", never "shift". unmapped: anything important that did not fit a field (pricing like "1.5-person rate", pets, deadlines). Resolve relative dates; today is ' + wd + ' ' + iso + '.';
+    return 'You parse a home-care lead-taker\'s free-text notes into (1) an availability-check intake, (2) a HubSpot deal, and (3) a Teams post for Tribute Home Care. Return ONLY valid JSON (no prose, no markdown fences): {"dealname":str,"teams_subject":str,"teams_summary":str,"availability":{...},"fields":{...},"unmapped":[str]}.\n'
+      + 'availability (omit if unknown): coverage [Days, Overnights, 24/7, Live-in]; day_length [Long, Short] (Short=under ~5h/visit); recurrence [weekly, specific]; days_of_week array ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address (>=town + state; infer from venue); start_date YYYY-MM-DD; gender_preference [male, female] (omit if either); restrictions array subset of [dog, cat, smoking] — include "dog" if there is a dog/dogs in the home, "cat" if a cat, "smoking" if anyone smokes.\n'
+      + 'fields (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender [Female, Male], client_dob; location_of_care [Private Home, Residence (non Brightview), Residence (Brightview)] (Private Home=house/apartment; Brightview=a Brightview community; non Brightview=other senior community — street address goes in availability.address NOT here); service_level [A,B,C,D,Live-In] (WEEKLY hours A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); schedule_requested; end_date_of_service(YYYY-MM-DD); referred_by_; amount (number); lead_source [Assisted Living, Geriatric Care Manager (GCM), Home Health Care, Hospice, Hospital, Independent Living, Physician, Skilled Nursing Facility / Rehab, Tribute Employee, Tribute Client, Website, Unknown, Professional (non-medical)]; market_region [BOS, MWB, NB, SB, BAL, ANN, BET, NVA, CHI, NNJ] (Boston=BOS, MetroWest=MWB, North-of-Boston=NB, South-of-Boston=SB, Baltimore=BAL, Annapolis=ANN, Bethesda=BET, Chicago=CHI); dealtype [newbusiness, existingbusiness] (default newbusiness); home_environment array subset of [Cats in Home, Dogs in Home, No Pets in Home, Smokers in Home, Non-Smokers in Home, Parking Available, No Parking Available]; tone_of_call [Calm, Stressed, Skeptical, Rushed]; was_referral_source_thanked_ ["true","false"]; how_to_charge; caregiver_match; notes (clean General Summary of situation + care needs); scheduling_follow_up; client_solutions_followup (next steps); details_about_client__personality__interests__behaviors__social_history; description (short deal description).\n'
+      + 'teams_subject: short subject line e.g. "LEAD — <community/town> (<client name(s)>)". teams_summary: 3-5 line plain-text Teams post; say "visit", never "shift". unmapped: anything important not fitting a field (e.g. "1.5-person rate", deadlines). Resolve relative dates; today is ' + wd + ' ' + iso + '.';
   }
 
   async function parseNotes() {
@@ -775,6 +861,8 @@
   document.getElementById('d_create_deal').onclick = () => submitLead(true, false);
   document.getElementById('d_post_teams').onclick = () => submitLead(false, true);
   document.getElementById('d_create_both').onclick = () => submitLead(true, true);
+  initDealSelects();
+  document.getElementById('d_stage').onchange = syncStage;
   hsWhoami();
   initMsal();
 </script>
