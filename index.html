@@ -97,6 +97,15 @@
   #hsStatus { font-size:12px; font-weight:600; } #hsStatus.hs-on { color:var(--yes); } #hsStatus.hs-off { color:var(--hedge); }
   .hsbtn { font-size:12px; font-weight:700; border:1px solid var(--teal); background:#fff; color:var(--teal-d); border-radius:8px; padding:6px 12px; cursor:pointer; }
   .hsbtn:hover { background:#ecfdfa; }
+  /* Deal form */
+  .dealcard { margin-top:22px; }
+  .dealcard .sub2 { color:var(--muted); font-size:12px; margin:-6px 0 10px; }
+  .fieldsub { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--teal-d); margin:18px 0 2px; }
+  .dealgrid { display:grid; grid-template-columns:1fr 1fr; gap:0 18px; }
+  @media(max-width:680px){ .dealgrid{ grid-template-columns:1fr; } }
+  .dealcard textarea { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:9px; font:14px/1.5 inherit; resize:vertical; min-height:60px; color:var(--ink); }
+  .colspan { grid-column:1 / -1; }
+  #d_result { margin-top:14px; } #d_result a { color:var(--teal-d); font-weight:700; }
 </style>
 </head>
 <body>
@@ -181,6 +190,49 @@
       <div id="out"><div class="placeholder">Fill out the request and hit<br/><b>Check Availability</b>.</div></div>
     </div>
   </div>
+
+  <div class="card dealcard" id="dealCard">
+    <h2>Lead details → create HubSpot deal</h2>
+    <div class="sub2">Start date, schedule, and address carry over from the request above. The deal is created in HubSpot owned by the connected rep.</div>
+
+    <div class="fieldsub">Caller</div>
+    <div class="dealgrid">
+      <div><label>Caller name</label><input type="text" id="d_caller_name" autocomplete="off" /></div>
+      <div><label>Relationship to client</label><select id="d_caller_rel">
+        <option value="">—</option><option>Adult Child</option><option>Son or Daughter in Law</option><option>Spouse or Partner</option><option>Calling for Self</option><option>GCM</option><option>Residence Dir</option><option>Other</option>
+      </select></div>
+      <div><label>Caller phone</label><input type="text" id="d_caller_phone" autocomplete="off" /></div>
+      <div><label>Caller email</label><input type="text" id="d_caller_email" autocomplete="off" /></div>
+    </div>
+
+    <div class="fieldsub">Client</div>
+    <div class="dealgrid">
+      <div><label>Client first name</label><input type="text" id="d_client_name" autocomplete="off" /></div>
+      <div><label>Client last name</label><input type="text" id="d_client_last" autocomplete="off" /></div>
+      <div><label>Client phone</label><input type="text" id="d_client_phone" autocomplete="off" /></div>
+      <div><label>Client email</label><input type="text" id="d_client_email" autocomplete="off" /></div>
+      <div><label>City</label><input type="text" id="d_client_city" autocomplete="off" /></div>
+      <div><label>State</label><input type="text" id="d_client_state" autocomplete="off" /></div>
+      <div><label>Gender</label><select id="d_client_gender"><option value="">—</option><option>Female</option><option>Male</option></select></div>
+      <div><label>Date of birth</label><input type="date" id="d_client_dob" /></div>
+    </div>
+
+    <div class="fieldsub">Care &amp; deal</div>
+    <div class="dealgrid">
+      <div><label>Service level</label><select id="d_service_level">
+        <option value="">—</option><option value="A">A (120+ hrs)</option><option value="B">B (61-119 hrs)</option><option value="C">C (24-60 hrs)</option><option value="D">D (1-23 hrs)</option><option value="Live-In">Live-In</option>
+      </select></div>
+      <div><label>Hours of service per visit</label><select id="d_hours">
+        <option value="">—</option><option value="5">LH 4 (24 hrs)</option><option value="4">LH 3 (12-23 hrs)</option><option value="3">LH 2 (9-11 hrs)</option><option value="2">LH 1 (5-8 hrs)</option><option value="1">SH (1-4 hrs)</option><option value="Live-in">Live-in</option>
+      </select></div>
+      <div><label>Estimated amount ($)</label><input type="text" id="d_amount" inputmode="decimal" autocomplete="off" /></div>
+      <div><label>Referred by</label><input type="text" id="d_referred_by" autocomplete="off" /></div>
+      <div class="colspan"><label>General summary / reason for service</label><textarea id="d_notes"></textarea></div>
+    </div>
+
+    <button type="button" class="go" id="d_create" style="margin-top:18px;">Create HubSpot deal</button>
+    <div id="d_result"></div>
+  </div>
 </div>
 
 <script>
@@ -212,6 +264,45 @@
   }
   function hsConnect() { window.open(HS_BASE + '/hubspotoauthstart?sid=' + encodeURIComponent(hsSid()), 'hsoauth', 'width=620,height=760'); }
   window.addEventListener('message', (e) => { if (e && e.data && e.data.hubspotConnected) hsWhoami(); });
+
+  // --- Create HubSpot deal (owned by the connected rep) ----------------------
+  const dval = (id) => { const e = document.getElementById(id); return e ? (e.value || '').trim() : ''; };
+  function scheduleRequestedText() {
+    const cov = state.coverage, dl = state.day_length;
+    const days = state.recurrence === 'weekly' ? 'Every day' : [...state.days].sort((a, b) => a - b).map(i => DOW[i]).join(', ');
+    return cov + ((cov === 'Days' || cov === '24/7') ? ' (' + dl + ' hours)' : '') + (days ? ' — ' + days : '');
+  }
+  async function createDealSubmit() {
+    const res = document.getElementById('d_result');
+    const who = await hsWhoami();
+    if (!who.connected) { res.innerHTML = '<div class="caveat">Connect HubSpot first (top-right), then try again.</div>'; hsConnect(); return; }
+    const addr = document.getElementById('client_address').value;
+    const body = {
+      start_date: document.getElementById('start_date').value,
+      schedule_requested: scheduleRequestedText(),
+      location_of_care: addr, client_address: addr,
+      service_level: dval('d_service_level'), hours_of_service_a_day: dval('d_hours'),
+      caller_name: dval('d_caller_name'), caller_phone: dval('d_caller_phone'), caller_email: dval('d_caller_email'),
+      caller_s_relationship_to_client: dval('d_caller_rel'),
+      client_name: dval('d_client_name'), client_last_name: dval('d_client_last'),
+      client_phone: dval('d_client_phone'), client_email: dval('d_client_email'),
+      client_city: dval('d_client_city'), client_state: dval('d_client_state'),
+      client_gender: dval('d_client_gender'), client_dob: dval('d_client_dob'),
+      referred_by_: dval('d_referred_by'), amount: dval('d_amount'), notes: dval('d_notes'),
+    };
+    const btn = document.getElementById('d_create');
+    btn.disabled = true; btn.textContent = 'Creating…'; res.innerHTML = '';
+    try {
+      const r = await fetch(HS_BASE + '/hubspotcreatedeal?sid=' + encodeURIComponent(hsSid()), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (j.ok) res.innerHTML = '<div class="ok">✓ Deal created — owned by ' + esc(j.owner || who.user) + '. <a href="' + esc(j.url) + '" target="_blank">Open in HubSpot ↗</a></div>';
+      else if (j.error === 'not_connected') { res.innerHTML = '<div class="caveat">HubSpot session expired — reconnect (top-right).</div>'; hsConnect(); }
+      else res.innerHTML = '<div class="caveat"><b>Could not create deal:</b> ' + esc(j.error || 'unknown') + (j.detail ? ' — ' + esc(j.detail) : '') + '</div>';
+    } catch (e) { res.innerHTML = '<div class="caveat">Request failed: ' + esc(e.message) + '</div>'; }
+    finally { btn.disabled = false; btn.textContent = 'Create HubSpot deal'; }
+  }
 
   // Shared-password gate. Password is entered by the user and kept in this browser
   // only (never in the page source); it's sent as ?key= to the gated endpoint.
@@ -480,6 +571,7 @@
 
   syncCoverage();
   document.getElementById('hsConnect').onclick = hsConnect;
+  document.getElementById('d_create').onclick = createDealSubmit;
   hsWhoami();
 </script>
 </body>
