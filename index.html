@@ -69,6 +69,7 @@
   .gatecard input { width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:9px; font-size:14px; }
   .gatecard button { margin-top:12px; width:100%; padding:11px; border:0; border-radius:10px; background:var(--teal); color:#fff; font-weight:700; cursor:pointer; }
   .gateerr { color:#b91c1c; font-size:12px; margin-top:8px; min-height:14px; }
+  .msbtn { background:#2f2f7a; color:#fff; border-color:#2f2f7a; } .msbtn:hover { background:#26266b; }
   /* RYG grid + answer + follow-up */
   .answer { margin:14px 0; padding:14px 16px; border-radius:12px; background:#ecfdfa; border:1px solid #b9e7e0; }
   .answer .lab, .qa .lab { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--teal-d); margin-bottom:5px; }
@@ -107,6 +108,7 @@
   .colspan { grid-column:1 / -1; }
   #d_result { margin-top:14px; } #d_result a { color:var(--teal-d); font-weight:700; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
 </head>
 <body>
 <div id="gate" class="gate hide">
@@ -121,7 +123,10 @@
 </div>
 <div class="wrap">
   <header><div class="dot">T</div><h1>Availability Check</h1>
-    <div class="hsbar"><span id="hsStatus" class="hs-off">HubSpot: not connected</span><button type="button" id="hsConnect" class="hsbtn">Connect HubSpot</button></div>
+    <div class="hsbar">
+      <span id="msStatus" class="hs-off">Microsoft: not signed in</span><button type="button" id="msSignin" class="hsbtn msbtn">Sign in with Microsoft</button>
+      <span id="hsStatus" class="hs-off">HubSpot: not connected</span><button type="button" id="hsConnect" class="hsbtn">Connect HubSpot</button>
+    </div>
   </header>
   <p class="sub">Recurring care · can we confirm now, or check with scheduling?</p>
 
@@ -245,10 +250,15 @@
       <div class="colspan"><label>Follow-up / scheduling ideas</label><input type="text" id="d_followup" autocomplete="off" /></div>
     </div>
 
-    <div class="fieldsub">Teams post preview</div>
+    <div class="fieldsub">Post to Teams</div>
+    <div class="dealgrid">
+      <div><label>Team</label><select id="d_team"><option value="">— sign in with Microsoft —</option></select></div>
+      <div><label>Channel</label><select id="d_channel"><option value="">—</option></select></div>
+    </div>
+    <label>Teams post preview</label>
     <textarea id="d_teams" placeholder="Draft summary for the Teams channel (generated from the notes; editable)."></textarea>
 
-    <button type="button" class="go" id="d_create" style="margin-top:18px;">Create HubSpot deal</button>
+    <button type="button" class="go" id="d_create" style="margin-top:18px;">Create deal &amp; post to Teams</button>
     <div id="d_result"></div>
   </div>
 </div>
@@ -282,6 +292,80 @@
   }
   function hsConnect() { window.open(HS_BASE + '/hubspotoauthstart?sid=' + encodeURIComponent(hsSid()), 'hsoauth', 'width=620,height=760'); }
   window.addEventListener('message', (e) => { if (e && e.data && e.data.hubspotConnected) hsWhoami(); });
+
+  // --- Microsoft sign-in (MSAL) + Teams posting via Graph -------------------
+  const MSAL_CFG = {
+    auth: {
+      clientId: '70fe7a1f-4d50-4867-b4f1-d58c8f6c5b50',
+      authority: 'https://login.microsoftonline.com/3277c56b-67a5-4dbc-9f82-474b19e15eb3',
+      redirectUri: 'https://tribute-home-care.github.io/tribute-availability/',
+    },
+    cache: { cacheLocation: 'localStorage' },
+  };
+  const GRAPH_SCOPES = ['User.Read', 'Team.ReadBasic.All', 'Channel.ReadBasic.All', 'ChannelMessage.Send'];
+  let msalApp = null;
+
+  function setMsStatus(acct) {
+    const el = document.getElementById('msStatus'), btn = document.getElementById('msSignin');
+    if (!el) return;
+    if (acct) { el.textContent = 'Microsoft: ' + (acct.username || acct.name || 'signed in'); el.className = 'hs-on'; if (btn) btn.textContent = 'Switch account'; }
+    else { el.textContent = 'Microsoft: not signed in'; el.className = 'hs-off'; if (btn) btn.textContent = 'Sign in with Microsoft'; }
+  }
+  async function initMsal() {
+    if (!window.msal) { setMsStatus(null); return; }
+    try {
+      msalApp = new msal.PublicClientApplication(MSAL_CFG);
+      await msalApp.initialize();
+      const accts = msalApp.getAllAccounts();
+      if (accts.length) { msalApp.setActiveAccount(accts[0]); setMsStatus(accts[0]); loadTeams(); }
+      else setMsStatus(null);
+    } catch (e) { setMsStatus(null); }
+  }
+  async function msSignIn() {
+    if (!msalApp) { await initMsal(); if (!msalApp) return; }
+    try { const res = await msalApp.loginPopup({ scopes: GRAPH_SCOPES }); msalApp.setActiveAccount(res.account); setMsStatus(res.account); loadTeams(); }
+    catch (e) { /* user closed the popup */ }
+  }
+  async function graphToken() {
+    if (!msalApp) return null;
+    const acct = msalApp.getActiveAccount(); if (!acct) return null;
+    try { const r = await msalApp.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: acct }); return r.accessToken; }
+    catch (e) { const r = await msalApp.acquireTokenPopup({ scopes: GRAPH_SCOPES }); return r.accessToken; }
+  }
+  async function graphGet(path, token) {
+    const r = await fetch('https://graph.microsoft.com/v1.0' + path, { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) throw new Error('Graph ' + r.status);
+    return r.json();
+  }
+  async function loadTeams() {
+    const sel = document.getElementById('d_team'); if (!sel) return;
+    try {
+      const token = await graphToken(); if (!token) return;
+      const j = await graphGet('/me/joinedTeams', token);
+      const teams = (j.value || []).slice().sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
+      sel.innerHTML = '<option value="">— choose a team —</option>' + teams.map(t => '<option value="' + esc(t.id) + '">' + esc(t.displayName) + '</option>').join('');
+    } catch (e) { sel.innerHTML = '<option value="">— could not load teams —</option>'; }
+  }
+  async function loadChannels(teamId) {
+    const sel = document.getElementById('d_channel'); if (!sel) return;
+    if (!teamId) { sel.innerHTML = '<option value="">—</option>'; return; }
+    sel.innerHTML = '<option value="">— loading… —</option>';
+    try {
+      const token = await graphToken();
+      const j = await graphGet('/teams/' + teamId + '/channels', token);
+      sel.innerHTML = '<option value="">— choose a channel —</option>' + (j.value || []).map(c => '<option value="' + esc(c.id) + '">' + esc(c.displayName) + '</option>').join('');
+    } catch (e) { sel.innerHTML = '<option value="">— could not load channels —</option>'; }
+  }
+  async function postToTeams(teamId, channelId, text) {
+    const token = await graphToken(); if (!token) throw new Error('not signed in to Microsoft');
+    const html = esc(text).replace(/\n/g, '<br>');
+    const r = await fetch('https://graph.microsoft.com/v1.0/teams/' + teamId + '/channels/' + channelId + '/messages', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: { contentType: 'html', content: html } }),
+    });
+    if (!r.ok) { const t = await r.text(); throw new Error('Teams ' + r.status + ' ' + t.slice(0, 120)); }
+    return r.json();
+  }
 
   // --- Create HubSpot deal (owned by the connected rep) ----------------------
   const dval = (id) => { const e = document.getElementById(id); return e ? (e.value || '').trim() : ''; };
@@ -317,11 +401,24 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const j = await r.json();
-      if (j.ok) res.innerHTML = '<div class="ok">✓ Deal created — owned by ' + esc(j.owner || who.user) + '. <a href="' + esc(j.url) + '" target="_blank">Open in HubSpot ↗</a></div>';
+      if (j.ok) {
+        let msg = '<div class="ok">✓ Deal created — owned by ' + esc(j.owner || who.user) + '. <a href="' + esc(j.url) + '" target="_blank">Open in HubSpot ↗</a></div>';
+        const teamId = dval('d_team'), chId = dval('d_channel'), teamsText = dval('d_teams');
+        if (teamId && chId && teamsText) {
+          try {
+            await postToTeams(teamId, chId, teamsText);
+            const cn = document.getElementById('d_channel');
+            msg += '<div class="ok">✓ Posted to Teams' + (cn && cn.selectedOptions[0] ? ' — ' + esc(cn.selectedOptions[0].text) : '') + '.</div>';
+          } catch (e) { msg += '<div class="caveat">Deal created, but Teams post failed: ' + esc(e.message) + '</div>'; }
+        } else if (teamsText) {
+          msg += '<div class="muted">Teams post skipped — sign in with Microsoft and pick a team + channel.</div>';
+        }
+        res.innerHTML = msg;
+      }
       else if (j.error === 'not_connected') { res.innerHTML = '<div class="caveat">HubSpot session expired — reconnect (top-right).</div>'; hsConnect(); }
       else res.innerHTML = '<div class="caveat"><b>Could not create deal:</b> ' + esc(j.error || 'unknown') + (j.detail ? ' — ' + esc(j.detail) : '') + '</div>';
     } catch (e) { res.innerHTML = '<div class="caveat">Request failed: ' + esc(e.message) + '</div>'; }
-    finally { btn.disabled = false; btn.textContent = 'Create HubSpot deal'; }
+    finally { btn.disabled = false; btn.textContent = 'Create deal & post to Teams'; }
   }
 
   // --- AI parse: one notes box -> availability intake + deal form + Teams draft
@@ -660,9 +757,12 @@
 
   syncCoverage();
   document.getElementById('hsConnect').onclick = hsConnect;
+  document.getElementById('msSignin').onclick = msSignIn;
+  document.getElementById('d_team').onchange = (e) => loadChannels(e.target.value);
   document.getElementById('d_parse').onclick = parseNotes;
   document.getElementById('d_create').onclick = createDealSubmit;
   hsWhoami();
+  initMsal();
 </script>
 </body>
 </html>
