@@ -781,17 +781,32 @@
   function render(d) {
     if (d.error) return '<div class="caveat"><b>'+esc(d.error)+'</b></div>';
     const yes = d.decision === 'YES';
-    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ Check with scheduling')+'</div>';
+    const g = d.ryg_grid || {};
+    // Plain confirm / hedge day lists — no specifics, no numbers.
+    const confirm = [], hedge = [];
+    for (const row of (g.rows || [])) {
+      const greens = row.cells.filter(c => c.requested && c.color === 'green').map(c => c.label);
+      const notg = row.cells.filter(c => c.requested && c.color !== 'green').map(c => c.label);
+      if (greens.length) confirm.push(rowLabel(row.row) + ': ' + greens.join(', '));
+      if (notg.length) hedge.push(rowLabel(row.row) + ': ' + notg.join(', '));
+    }
+    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ Hedge — check with scheduling')+'</div>';
     h += '<div class="answer"><div class="lab">The answer</div><div id="answerBox" class="abx"><span class="think">Summarizing…</span></div></div>';
+    if (confirm.length) h += '<div class="ok">✅ <b>Confirm now</b> — ' + confirm.map(esc).join(' · ') + '</div>';
+    if (hedge.length) h += '<div class="notg"><b>⚠️ Follow up with scheduling' + (confirm.length ? '' : ' — the whole case') + '</b> — ' + hedge.map(esc).join(' · ') + '</div>';
+    h += '<div class="tell"><div class="lab">Say to the caller</div><div class="scr">“'+esc(d.lead_taker_script)+'”</div></div>';
+    // Everything detailed (grid, numbers, candidates, follow-up) is hidden by default — not shown on the call.
+    h += '<button type="button" class="toggle" id="showDetails">▾ Show availability details</button>';
+    h += '<div id="detailsWrap" class="hide">';
     h += rygGridHTML(d.ryg_grid);
     h += notGuaranteedHTML(d.ryg_grid);
     h += '<div class="qa"><div class="lab">Ask a follow-up</div><div id="qaLog" class="qalog"></div>'
        + '<form id="qaForm" class="qarow"><input id="qaInput" type="text" placeholder="e.g. What about Thursday overnights?" autocomplete="off" /><button class="qabtn" type="submit">Ask</button></form></div>';
-    h += '<button type="button" class="toggle" id="showWho">Show who can do it ▾</button>';
-    h += '<div id="whoWrap" class="hide">'+whoHTML(d)+'</div>';
+    h += whoHTML(d);
     h += '<div class="foot">'+esc(d.coverage)+' · '+esc(d.days_per_week)+' day(s)/week · '+esc(d.caregivers_local)+' local'
        + (d.caregivers_extended!=null?' · '+esc(d.caregivers_extended)+' beyond 20mi':'')
        + (d.open_demand_total!=null?' · '+esc(d.open_demand_total)+' open booking sets netted':'')+'</div>';
+    h += '</div>';
     return h;
   }
 
@@ -833,11 +848,11 @@
 
   function wireResult(d) {
     narrate(d);
-    const tog = document.getElementById('showWho');
+    const tog = document.getElementById('showDetails');
     if (tog) tog.onclick = () => {
-      const w = document.getElementById('whoWrap');
+      const w = document.getElementById('detailsWrap');
       const hidden = w.classList.toggle('hide');
-      tog.textContent = hidden ? 'Show who can do it ▾' : 'Hide who can do it ▴';
+      tog.textContent = hidden ? '▾ Show availability details' : '▴ Hide availability details';
     };
     const qf = document.getElementById('qaForm');
     if (qf) qf.onsubmit = async (e) => {
