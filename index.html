@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Tribute · Availability Check</title>
+<title>Tribute · Lead Taker Tool</title>
 <style>
   :root {
     /* neutrals — light slate (Call Intelligence) */
@@ -117,6 +117,41 @@
   .dealcard textarea { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:9px; font:14px/1.5 inherit; resize:vertical; min-height:60px; color:var(--ink); }
   .colspan { grid-column:1 / -1; }
   #d_result { margin-top:14px; } #d_result a { color:var(--teal-d); font-weight:700; }
+  /* tabs */
+  .tabs { display:flex; gap:2px; margin:18px 0 18px; border-bottom:1px solid var(--line); }
+  .tabs .tab { background:none; border:0; padding:11px 18px; font:700 14px inherit; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tabs .tab.on { color:var(--teal-d); border-bottom-color:var(--teal); }
+  .tabs .tab:hover { color:var(--ink); }
+  /* lead desk */
+  #view-leaddesk .ldbar { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  #view-leaddesk .ldbar h2 { font-size:18px; text-transform:none; letter-spacing:0; color:var(--ink); margin:0; }
+  .ldcount { background:var(--blue-bg); color:var(--blue-text); border-radius:999px; padding:3px 11px; font-size:13px; font-weight:600; }
+  .ldsearch { margin-left:auto; max-width:240px; width:240px; }
+  .ldrow { background:#fff; border:1px solid var(--line); border-radius:12px; padding:13px 16px; margin-bottom:9px; display:flex; align-items:center; gap:14px; cursor:pointer; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .ldrow:hover { border-color:var(--teal); }
+  .ldrow .nm { font-weight:700; min-width:180px; }
+  .ldchip { font-size:12px; font-weight:600; border-radius:999px; padding:2px 9px; white-space:nowrap; }
+  .ldchip.mkt { background:var(--blue-bg); color:var(--blue-text); }
+  .ldchip.tmpl { background:var(--yes-bg); color:var(--yes); }
+  .ldsched { color:var(--muted); font-size:13px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ldbadge { margin-left:auto; font-size:12px; font-weight:700; border-radius:999px; padding:3px 11px; background:var(--orange-bg); color:var(--teal-d); }
+  .ldarrow { color:var(--hint); }
+  .lddetail .dh { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+  .lddetail .dh h2 { font-size:18px; text-transform:none; letter-spacing:0; color:var(--ink); margin:0; }
+  .ldback { background:none; border:0; color:var(--teal-d); font-weight:600; cursor:pointer; font-size:14px; padding:0; }
+  .ldfields { display:grid; grid-template-columns:1fr 1fr; gap:12px 22px; margin:8px 0 16px; }
+  .ldf label { margin:0 0 2px; color:var(--muted); font-size:12px; }
+  .ldf .v { font-size:15px; }
+  .ldrate { font-size:12.5px; color:var(--muted); margin:2px 0 10px; }
+  table.ldgrid { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+  table.ldgrid th, table.ldgrid td { border:1px solid var(--line); padding:5px 7px; text-align:center; }
+  table.ldgrid th { background:var(--secondary); font-size:11px; text-transform:uppercase; color:var(--muted); }
+  table.ldgrid td.day { text-align:left; font-weight:600; background:var(--bg); }
+  table.ldgrid input { width:74px; border:1px solid var(--line); border-radius:6px; padding:3px; text-align:center; font:13px inherit; }
+  table.ldgrid input::placeholder { color:var(--hedge); font-size:11px; }
+  .ldtotal { font-weight:800; font-size:16px; }
+  .ldnote { font-size:13px; color:var(--hedge); background:var(--hedge-bg); border:1px solid var(--hedge-line); border-radius:9px; padding:8px 11px; margin:10px 0; }
+  .ldtimebox { display:flex; gap:8px; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
 </head>
@@ -124,7 +159,7 @@
 <div id="gate" class="gate hide">
   <div class="gatecard">
     <div class="dot">T</div>
-    <div class="gatetitle">Availability Check</div>
+    <div class="gatetitle">Lead Taker Tool</div>
     <p class="gatesub">Enter the team password to continue.</p>
     <input type="password" id="gatepw" placeholder="Team password" autocomplete="current-password" />
     <button id="gatego" type="button">Enter</button>
@@ -132,12 +167,18 @@
   </div>
 </div>
 <div class="wrap">
-  <header><div class="dot">T</div><h1>Availability Check</h1>
+  <header><div class="dot">T</div><h1>Lead Taker Tool</h1>
     <div class="hsbar">
       <span id="msStatus" class="hs-off">Microsoft: not signed in</span><button type="button" id="msSignin" class="hsbtn msbtn">Sign in with Microsoft</button>
       <span id="hsStatus" class="hs-off">HubSpot: not connected</span><button type="button" id="hsConnect" class="hsbtn">Connect HubSpot</button>
     </div>
   </header>
+  <nav class="tabs">
+    <button class="tab on" data-view="intake" type="button">New Lead</button>
+    <button class="tab" data-view="leaddesk" type="button">Lead Desk · CSAs</button>
+  </nav>
+
+  <div id="view-intake">
   <p class="sub">Recurring care · can we confirm now, or check with scheduling?</p>
 
   <div class="card" id="leadCard">
@@ -312,6 +353,18 @@
       <button type="button" class="go" id="d_create_both" style="width:auto;margin-top:0;flex:1.4;min-width:200px">Create deal &amp; post to Teams</button>
     </div>
     <div id="d_result"></div>
+  </div>
+  </div><!-- /view-intake -->
+
+  <div id="view-leaddesk" class="hide">
+    <p class="sub">Qualified leads → generate the Client Service Agreement.
+      <span class="muted" style="font-size:12px">· sample data shown; live HubSpot wiring is the next step.</span></p>
+    <div id="ldQueue">
+      <div class="ldbar"><h2>Qualified — awaiting CSA</h2><span class="ldcount" id="ldCount"></span>
+        <input type="text" class="ldsearch" id="ldSearch" placeholder="Search name / market…" /></div>
+      <div id="ldList"></div>
+    </div>
+    <div id="ldDetail" class="hide"></div>
   </div>
 </div>
 
@@ -890,6 +943,143 @@
   document.getElementById('d_stage').onchange = syncStage;
   hsWhoami();
   initMsal();
+
+  // ===== Tab switching =====
+  document.querySelectorAll('.tabs .tab').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs .tab').forEach(x => x.classList.toggle('on', x === b));
+    const v = b.dataset.view;
+    document.getElementById('view-intake').classList.toggle('hide', v !== 'intake');
+    document.getElementById('view-leaddesk').classList.toggle('hide', v !== 'leaddesk');
+    if (v === 'leaddesk') LD.init();
+  }));
+
+  // ===== Lead Desk (CSA queue) =====
+  window.LD = (function () {
+    // PLACEHOLDER / FICTIONAL sample only — NEVER put real client data in this public file.
+    // Real qualified deals load at runtime from the backend (per-rep HubSpot auth) in renderList().
+    const DEALS = [
+      {name:"Margaret Ellison", market:"BAL", level:"D", hpd:"1", sched:"1-2 hr visits 3x a week ongoing", amount:330},
+      {name:"Eleanor Whitfield", market:"BOS", level:"A", hpd:"5", sched:"24/7", amount:7896},
+      {name:"Harold Banks", market:"BAL", level:"D", hpd:"1", sched:"maybe 24/7, unsure until discharge", amount:780},
+      {name:"Patricia Nolan", market:"BOS", level:"C", hpd:"2", sched:"TBD", amount:1000},
+      {name:"George Halloran", market:"CHI", level:"B", hpd:"4", sched:"flexible - looking for daytime", amount:3731},
+      {name:"Dorothy Pearce", market:"ANN", level:"D", hpd:"1", sched:"1 to 3 days/week, short hours", amount:330},
+      {name:"Frances Webb", market:"BOS", level:"D", hpd:"1", sched:"1hr in the AM 7 days a week", amount:568.75},
+      {name:"Walter Inglis", market:"BAL", level:"B", hpd:"4", sched:"10a-6pm, 7 days a week", amount:2072},
+      {name:"Helen Cardoza", market:"SB", level:"C", hpd:"2", sched:"9-3", amount:1848},
+      {name:"Raymond Stoll", market:"BAL", level:"C", hpd:"4", sched:"possible 3 overnight visits, 8p-8a", amount:1332},
+      {name:"Arthur Penn", market:"CHI", level:"C", hpd:"2", sched:"mwf 5-6 hours", amount:600},
+      {name:"Vivian Mercer", market:"NB", level:"D", hpd:"3", sched:"7:30-5 on Thursdays", amount:446.5},
+    ];
+    const TEMPLATES = ["Chicago CSA June 2026","Massachusetts CSA BOS and MWB April 2026","Massachusetts CSA North of Boston April 2026",
+      "South of Boston CSA April 2026","Maryland CSA November 2025","Maryland CSA (Edenwald) March 2026",
+      "Maryland CSA April 2026 No Financials","Cape Live-In Special Rate","General Credit Card Page (All of Tribute)"];
+    const MARKET_TEMPLATE = {CHI:"Chicago CSA June 2026", BOS:"Massachusetts CSA BOS and MWB April 2026", MWB:"Massachusetts CSA BOS and MWB April 2026",
+      NB:"Massachusetts CSA North of Boston April 2026", SB:"South of Boston CSA April 2026", BAL:"Maryland CSA November 2025", ANN:"Maryland CSA November 2025", BET:"Maryland CSA November 2025"};
+    const MARKET_LABEL = {CHI:"Chicago",BOS:"Boston",MWB:"MetroWest",NB:"North of Boston",SB:"South of Boston",BAL:"Baltimore",ANN:"Annapolis",BET:"Bethesda"};
+    const RATECARD = {
+      "Chicago CSA June 2026":{tiers:[[1,3,62],[4,99,41]],livein:570},
+      "Massachusetts CSA BOS and MWB April 2026":{tiers:[[0,3.99,65],[4,24,47]],livein:610},
+      "Massachusetts CSA North of Boston April 2026":{tiers:[[0,3.99,65],[4,24,45]],livein:610},
+      "South of Boston CSA April 2026":{tiers:[[0,3.99,55],[4,24,44.5]],livein:585},
+      "Maryland CSA November 2025":{tiers:[[1,3,55],[4,11,39],[12,24,37]],livein:550},
+      "Maryland CSA (Edenwald) March 2026":{tiers:[[1,3,55],[4,11,37],[12,24,35]],livein:550},
+      "Maryland CSA April 2026 No Financials":{tiers:[[1,3,55],[4,11,39],[12,24,37]],livein:550},
+      "Cape Live-In Special Rate":{tiers:[[1,3,50],[4,11,43],[12,24,43]],livein:585},
+      "General Credit Card Page (All of Tribute)":{tiers:[],livein:0},
+    };
+    const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const $ = id => document.getElementById(id);
+    let cur = 0, parsed = null, inited = false;
+
+    function rateForHours(t,h){ const c=RATECARD[t]; if(!c||!c.tiers.length) return 0; for(const [lo,hi,r] of c.tiers){ if(h>=lo&&h<=hi) return r; } return c.tiers[c.tiers.length-1][2]; }
+    function rateCardText(t){ const c=RATECARD[t]; if(!c||!c.tiers.length) return "—";
+      const band=([lo,hi,r])=>(hi>=99?lo+"+ hr":(lo<1?"under "+Math.ceil(hi)+" hr":lo+"–"+hi+" hr"))+" $"+r;
+      return c.tiers.map(band).join(" · ")+" · live-in $"+c.livein+"/day"+(c.verify?"  ⚠ verify variant":""); }
+    function pickTemplate(d){ const txt=(d.name+" "+d.sched).toLowerCase();
+      if((d.market==="BAL"||d.market==="ANN"||d.market==="BET")&&txt.includes("edenwald")) return "Maryland CSA (Edenwald) March 2026";
+      return MARKET_TEMPLATE[d.market]||TEMPLATES[0]; }
+    function shortT(t){ return t.replace(/ (CSA|April|March|June|November).*/,'').replace('Massachusetts','MA'); }
+    function fmt(h){ h=((h%24)+24)%24; const ap=h<12?'a':'p'; let hh=Math.floor(h)%12; if(hh===0)hh=12; const mm=Math.round((h-Math.floor(h))*60); return hh+(mm?(':'+String(mm).padStart(2,'0')):'')+ap; }
+    function parseSchedule(text,hpd){ const s=(text||"").toLowerCase();
+      const unclear=/tbd|unk|unsure|unknown|flexible|possible|maybe|depends/.test(s);
+      let days=[];
+      if(/7 ?days|every ?day|daily|24\/7/.test(s)) days=[0,1,2,3,4,5,6];
+      else { const map={sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
+        if(/\bm\W?w\W?f\b/.test(s)) days=[1,3,5];
+        Object.keys(map).forEach(k=>{ if(s.includes(k)&&!days.includes(map[k])) days.push(map[k]); });
+        const nx=s.match(/(\d)\s*x|\b(\d)\s*(?:days?|times?)\b/); if(!days.length&&nx){ const n=+(nx[1]||nx[2])||3; days=[1,2,3,4,5].slice(0,n); } }
+      let visits=[];
+      if(/24\/7/.test(s)){ visits=[{win:"7a-7p",hours:12,set:false},{win:"7p-7a",hours:12,set:false}]; }
+      else {
+        const dr=s.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*(?:hrs?|hours?)\b/);
+        const d1=s.match(/(\d+(?:\.\d+)?)\s*(?:hrs?|hours?)\b/);
+        const ck=s.match(/(\d{1,2})(?::(\d{2}))?\s*([ap])m?\s*[-–]\s*(\d{1,2})(?::(\d{2}))?\s*([ap])?m?/)
+              || ((!dr&&!d1)?s.match(/\b(\d{1,2})(?::(\d{2}))?\s*[-–]\s*(\d{1,2})(?::(\d{2}))?\b/):null);
+        if(ck){ let h1=+ck[1]+(ck[2]?+ck[2]/60:0), h2=+ck[4]+(ck[5]?+ck[5]/60:0); const a1=ck[3],a2=ck[6];
+          if(a1==='p'&&h1<12)h1+=12; if(a1==='a'&&h1===12)h1=0; if(a2==='p'&&h2<12)h2+=12; if(a2==='a'&&h2===12)h2=0;
+          if(!a1&&!a2&&h2<=h1)h2+=12; let dur=h2-h1; if(dur<=0)dur+=24;
+          visits=[{win:fmt(h1)+'-'+fmt(h2),hours:Math.round(dur*10)/10,set:false}]; }
+        else if(dr){ visits=[{win:"",hours:+dr[2],set:true}]; }
+        else if(d1){ visits=[{win:"",hours:+d1[1],set:true}]; }
+        else { const bk={"5":24,"4":12,"3":10,"2":6,"1":3}; visits=[{win:"",hours:bk[hpd]||6,set:true}]; }
+      }
+      return {days,visits,unclear}; }
+
+    function renderList(f){ f=(f||"").toLowerCase();
+      const rows=DEALS.map((d,i)=>({d,i})).filter(({d})=>!f||(d.name+d.market+MARKET_LABEL[d.market]).toLowerCase().includes(f));
+      $('ldCount').textContent=rows.length+" leads";
+      $('ldList').innerHTML=rows.map(({d,i})=>`<div class="ldrow" onclick="LD.open(${i})">
+        <span class="nm">${d.name}</span><span class="ldchip mkt">${MARKET_LABEL[d.market]||d.market}</span>
+        <span class="ldchip tmpl">${shortT(pickTemplate(d))}</span><span class="ldsched">${d.sched}</span>
+        <span class="ldbadge">Needs CSA</span><span class="ldarrow">›</span></div>`).join(""); }
+
+    function gridHTML(p,t){ let total=0; const body=DAYS.map((dn,di)=>{
+      const on=p.days.includes(di); const v1=on?p.visits[0]:null, v2=on?p.visits[1]:null;
+      const r1=v1?rateForHours(t,v1.hours):0, r2=v2?rateForHours(t,v2.hours):0;
+      const c1=v1?v1.hours*r1:0, c2=v2?v2.hours*r2:0; total+=c1+c2;
+      const cell=v=>v?`<input value="${v.win}" placeholder="${v.set?'set time':''}" title="${v.hours}h">`:`<input value="">`;
+      return `<tr><td class="day">${dn}</td><td>${cell(v1)}</td><td>${cell(v2)}</td><td>${v1?'$'+r1:''}</td><td>${v2?'$'+r2:''}</td><td>${(c1+c2)?'$'+Math.round(c1+c2):''}</td></tr>`;
+    }).join("");
+      return `<table class="ldgrid"><thead><tr><th></th><th colspan="2">Hours (time window)</th><th colspan="2">Rate</th><th>Charge</th></tr>
+        <tr><th></th><th>Visit 1</th><th>Visit 2</th><th>V1</th><th>V2</th><th></th></tr></thead><tbody>${body}</tbody>
+        <tfoot><tr><td colspan="5" style="text-align:right;border:none">Weekly Total</td><td class="ldtotal">$${Math.round(total).toLocaleString()}</td></tr></tfoot></table>`; }
+    function renderGrid(){ $('ldGridWrap').innerHTML=gridHTML(parsed,$('ldTmpl').value); $('ldRate').textContent="Rates: "+rateCardText($('ldTmpl').value); }
+    function updateNote(){ const need=(parsed.unclear||!parsed.days.length||parsed.visits.some(v=>v.set));
+      $('ldNote').innerHTML=need?`<div class="ldnote">⚠ Times not fully specified (cells marked “set time” are a duration, not a clock window). Type the visit times above — e.g. “Mon/Wed/Fri 9-11a” — and click Apply.</div>`:""; }
+
+    function open(i){ cur=i; const d=DEALS[i]; const t=pickTemplate(d); parsed=parseSchedule(d.sched,d.hpd);
+      const opts=TEMPLATES.map(x=>`<option ${x===t?'selected':''}>${x}</option>`).join("");
+      const hpdlbl=({"5":"24h","4":"12–23h","3":"9–11h","2":"5–8h","1":"1–4h"})[d.hpd]||"";
+      $('ldQueue').classList.add('hide'); $('ldDetail').classList.remove('hide');
+      $('ldDetail').innerHTML=`<div class="card lddetail">
+        <div class="dh"><button class="ldback" onclick="LD.close()">← Queue</button><h2>${d.name}</h2>
+          <span class="ldchip mkt" style="margin-left:auto">${MARKET_LABEL[d.market]||d.market}</span></div>
+        <div class="ldfields">
+          <div class="ldf"><label>Schedule requested (from notes)</label><div class="v">${d.sched}</div></div>
+          <div class="ldf"><label>Est. weekly amount (HubSpot)</label><div class="v">$${d.amount.toLocaleString()}</div></div>
+          <div class="ldf"><label>Service level</label><div class="v">${d.level} · ${hpdlbl} per visit</div></div>
+          <div class="ldf"><label>Deal stage</label><div class="v">Qualified → <b>Contract Sent</b> on send</div></div>
+          <div class="ldf"><label>Client name (prefilled on CSA p.1)</label><div class="v">${d.name} <span class="muted" style="font-size:12px">· prod uses client-name field</span></div></div>
+        </div>
+        <label>✨ Specify visit times — plain English, fills the grid</label>
+        <div class="ldtimebox"><input type="text" id="ldTimes" value="${d.sched.replace(/"/g,'&quot;')}">
+          <button type="button" class="go" style="width:auto;margin:0;padding:9px 18px;white-space:nowrap" onclick="LD.apply()">Apply</button></div>
+        <label>Template (auto-selected by area — override if needed)</label>
+        <select id="ldTmpl" onchange="LD.grid()">${opts}</select>
+        <div class="ldrate" id="ldRate"></div><div id="ldNote"></div><div id="ldGridWrap"></div>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:18px">
+          <button type="button" class="go" style="width:auto;margin:0" onclick="LD.gen()">Generate DocuSign draft</button>
+          <button type="button" class="toggle" style="margin:0" onclick="LD.close()">Back to queue</button>
+          <span class="muted" id="ldGen">Not started</span></div>
+      </div>`;
+      renderGrid(); updateNote(); }
+    function close(){ $('ldDetail').classList.add('hide'); $('ldQueue').classList.remove('hide'); }
+    function apply(){ parsed=parseSchedule($('ldTimes').value, DEALS[cur].hpd); renderGrid(); updateNote(); }
+    function gen(){ $('ldGen').innerHTML=`✅ <b>(simulated)</b> Draft from "<b>${$('ldTmpl').value}</b>" — grid + client name pre-filled → deal moved to <b>Contract Sent</b>.`; }
+    function init(){ if(inited) return; inited=true; renderList(''); $('ldSearch').addEventListener('input', e=>renderList(e.target.value)); }
+    return {init, open, close, apply, grid:renderGrid, gen};
+  })();
 </script>
 </body>
 </html>
