@@ -1112,6 +1112,7 @@
         if(c) pf[dn+'_CHG']='$'+Math.round(c);
       });
       pf['WeeklyTotal']='$'+Math.round(total).toLocaleString();
+      pf['ClientName']=clientName;   // client name is now a prefill field, filled from the tool
       $('ldGen').textContent='Generating…';
       try{
         const r=await fetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
