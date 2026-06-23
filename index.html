@@ -171,6 +171,7 @@
     <div class="hsbar">
       <span id="msStatus" class="hs-off">Microsoft: not signed in</span><button type="button" id="msSignin" class="hsbtn msbtn">Sign in with Microsoft</button>
       <span id="hsStatus" class="hs-off">HubSpot: not connected</span><button type="button" id="hsConnect" class="hsbtn">Connect HubSpot</button>
+      <span id="dsStatus" class="hs-off">DocuSign: not connected</span><button type="button" id="dsConnect" class="hsbtn">Connect DocuSign</button>
     </div>
   </header>
   <nav class="tabs">
@@ -358,7 +359,7 @@
 
   <div id="view-leaddesk" class="hide">
     <p class="sub">Qualified leads → generate the Client Service Agreement.
-      <span class="muted" style="font-size:12px">· sample data shown; live HubSpot wiring is the next step.</span></p>
+      <span class="muted" style="font-size:12px">· loaded live from HubSpot; sent as you via DocuSign.</span></p>
     <div id="ldQueue">
       <div class="ldbar"><h2>Qualified — awaiting CSA</h2><span class="ldcount" id="ldCount"></span>
         <input type="text" class="ldsearch" id="ldSearch" placeholder="Search name / market…" /></div>
@@ -397,6 +398,20 @@
   }
   function hsConnect() { window.open(HS_BASE + '/hubspotoauthstart?sid=' + encodeURIComponent(hsSid()), 'hsoauth', 'width=620,height=760'); }
   window.addEventListener('message', (e) => { if (e && e.data && e.data.hubspotConnected) hsWhoami(); });
+
+  // --- DocuSign per-rep OAuth (mirror of HubSpot) ---------------------------
+  function setDsStatus(j) {
+    const el = document.getElementById('dsStatus'), btn = document.getElementById('dsConnect');
+    if (!el) return;
+    if (j && j.connected) { el.textContent = 'DocuSign: ' + (j.user || 'connected'); el.className = 'hs-on'; if (btn) btn.textContent = 'Reconnect DocuSign'; }
+    else { el.textContent = 'DocuSign: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect DocuSign'; }
+  }
+  async function dsWhoami() {
+    try { const r = await fetch(HS_BASE + '/docusignwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setDsStatus(j); return j; }
+    catch (e) { setDsStatus({ connected: false }); return { connected: false }; }
+  }
+  function dsConnect() { window.open(HS_BASE + '/docusignoauthstart?sid=' + encodeURIComponent(hsSid()), 'dsoauth', 'width=640,height=760'); }
+  window.addEventListener('message', (e) => { if (e && e.data && e.data.docusignConnected) dsWhoami(); });
 
   // --- Microsoft sign-in (MSAL) + Teams posting via Graph -------------------
   const MSAL_CFG = {
@@ -933,6 +948,7 @@
 
   syncCoverage();
   document.getElementById('hsConnect').onclick = hsConnect;
+  document.getElementById('dsConnect').onclick = dsConnect;
   document.getElementById('msSignin').onclick = msSignIn;
   document.getElementById('d_team').onchange = (e) => loadChannels(e.target.value);
   document.getElementById('d_parse').onclick = parseNotes;
@@ -942,6 +958,7 @@
   initDealSelects();
   document.getElementById('d_stage').onchange = syncStage;
   hsWhoami();
+  dsWhoami();
   initMsal();
 
   // ===== Tab switching =====
@@ -957,7 +974,7 @@
   window.LD = (function () {
     // PLACEHOLDER / FICTIONAL sample only — NEVER put real client data in this public file.
     // Real qualified deals load at runtime from the backend (per-rep HubSpot auth) in renderList().
-    const DEALS = [
+    let DEALS = [
       {name:"Margaret Ellison", market:"BAL", level:"D", hpd:"1", sched:"1-2 hr visits 3x a week ongoing", amount:330},
       {name:"Eleanor Whitfield", market:"BOS", level:"A", hpd:"5", sched:"24/7", amount:7896},
       {name:"Harold Banks", market:"BAL", level:"D", hpd:"1", sched:"maybe 24/7, unsure until discharge", amount:780},
@@ -990,7 +1007,7 @@
     };
     const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
     const $ = id => document.getElementById(id);
-    let cur = 0, parsed = null, inited = false;
+    let cur = 0, parsed = null, listenerAttached = false;
 
     function rateForHours(t,h){ const c=RATECARD[t]; if(!c||!c.tiers.length) return 0; for(const [lo,hi,r] of c.tiers){ if(h>=lo&&h<=hi) return r; } return c.tiers[c.tiers.length-1][2]; }
     function rateCardText(t){ const c=RATECARD[t]; if(!c||!c.tiers.length) return "—";
@@ -1076,8 +1093,38 @@
       renderGrid(); updateNote(); }
     function close(){ $('ldDetail').classList.add('hide'); $('ldQueue').classList.remove('hide'); }
     function apply(){ parsed=parseSchedule($('ldTimes').value, DEALS[cur].hpd); renderGrid(); updateNote(); }
-    function gen(){ $('ldGen').innerHTML=`✅ <b>(simulated)</b> Draft from "<b>${$('ldTmpl').value}</b>" — grid + client name pre-filled → deal moved to <b>Contract Sent</b>.`; }
-    function init(){ if(inited) return; inited=true; renderList(''); $('ldSearch').addEventListener('input', e=>renderList(e.target.value)); }
+    async function gen(){
+      const d=DEALS[cur], t=$('ldTmpl').value; const pf={}; let total=0;
+      DAYS.forEach((dn,di)=>{ if(!parsed.days.includes(di)) return;
+        const v1=parsed.visits[0], v2=parsed.visits[1];
+        const r1=v1?rateForHours(t,v1.hours):0, r2=v2?rateForHours(t,v2.hours):0;
+        const c=(v1?v1.hours*r1:0)+(v2?v2.hours*r2:0); total+=c;
+        if(v1){ pf[dn+'_V1H']=v1.win||(v1.hours+'h'); pf[dn+'_V1R']='$'+r1; }
+        if(v2){ pf[dn+'_V2H']=v2.win||(v2.hours+'h'); pf[dn+'_V2R']='$'+r2; }
+        if(c) pf[dn+'_CHG']='$'+Math.round(c);
+      });
+      pf['WeeklyTotal']='$'+Math.round(total).toLocaleString();
+      $('ldGen').textContent='Generating…';
+      try{
+        const r=await fetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({dealId:d.id, template:t, clientName:d.clientName||d.name, clientEmail:d.clientEmail||'', prefill:pf, send:false})});
+        const j=await r.json().catch(()=>({}));
+        if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML='Connect DocuSign (top-right) first.'; dsConnect(); return; }
+        if(!j.ok){ $('ldGen').innerHTML='<span style="color:var(--danger)">Error: '+(j.error||'failed')+(j.detail?(' — '+j.detail):'')+'</span>'; return; }
+        $('ldGen').innerHTML='✅ Draft created as <b>'+(j.sentAs||'you')+'</b>'+(j.advanced?' · deal → Contract Sent':'')+(j.reviewUrl?(' · <a href="'+j.reviewUrl+'" target="_blank" style="color:var(--teal-d);font-weight:700">Review &amp; send in DocuSign →</a>'):'');
+      }catch(e){ $('ldGen').innerHTML='<span style="color:var(--danger)">'+e.message+'</span>'; }
+    }
+    async function init(){
+      if(!listenerAttached){ $('ldSearch').addEventListener('input', e=>renderList(e.target.value)); listenerAttached=true; }
+      $('ldDetail').classList.add('hide'); $('ldQueue').classList.remove('hide');
+      $('ldList').innerHTML='<div class="muted" style="padding:12px">Loading qualified leads…</div>'; $('ldCount').textContent='';
+      try{
+        const r=await fetch(HS_BASE+'/csaqueue?sid='+encodeURIComponent(hsSid()));
+        if(r.status===401){ $('ldList').innerHTML='<div class="ldnote">Connect HubSpot (top-right) to load qualified leads.</div>'; return; }
+        const j=await r.json(); if(j.deals) DEALS=j.deals;
+      }catch(e){ $('ldList').innerHTML='<div class="ldnote">Could not load leads: '+e.message+'</div>'; return; }
+      renderList('');
+    }
     return {init, open, close, apply, grid:renderGrid, gen};
   })();
 </script>
