@@ -972,22 +972,9 @@
 
   // ===== Lead Desk (CSA queue) =====
   window.LD = (function () {
-    // PLACEHOLDER / FICTIONAL sample only — NEVER put real client data in this public file.
-    // Real qualified deals load at runtime from the backend (per-rep HubSpot auth) in renderList().
-    let DEALS = [
-      {name:"Margaret Ellison", market:"BAL", level:"D", hpd:"1", sched:"1-2 hr visits 3x a week ongoing", amount:330},
-      {name:"Eleanor Whitfield", market:"BOS", level:"A", hpd:"5", sched:"24/7", amount:7896},
-      {name:"Harold Banks", market:"BAL", level:"D", hpd:"1", sched:"maybe 24/7, unsure until discharge", amount:780},
-      {name:"Patricia Nolan", market:"BOS", level:"C", hpd:"2", sched:"TBD", amount:1000},
-      {name:"George Halloran", market:"CHI", level:"B", hpd:"4", sched:"flexible - looking for daytime", amount:3731},
-      {name:"Dorothy Pearce", market:"ANN", level:"D", hpd:"1", sched:"1 to 3 days/week, short hours", amount:330},
-      {name:"Frances Webb", market:"BOS", level:"D", hpd:"1", sched:"1hr in the AM 7 days a week", amount:568.75},
-      {name:"Walter Inglis", market:"BAL", level:"B", hpd:"4", sched:"10a-6pm, 7 days a week", amount:2072},
-      {name:"Helen Cardoza", market:"SB", level:"C", hpd:"2", sched:"9-3", amount:1848},
-      {name:"Raymond Stoll", market:"BAL", level:"C", hpd:"4", sched:"possible 3 overnight visits, 8p-8a", amount:1332},
-      {name:"Arthur Penn", market:"CHI", level:"C", hpd:"2", sched:"mwf 5-6 hours", amount:600},
-      {name:"Vivian Mercer", market:"NB", level:"D", hpd:"3", sched:"7:30-5 on Thursdays", amount:446.5},
-    ];
+    // Real qualified deals load at runtime from the backend (per-rep HubSpot auth) in init().
+    // Starts empty so nothing fake ever shows.
+    let DEALS = [];
     const TEMPLATES = ["Chicago CSA June 2026","Massachusetts CSA BOS and MWB April 2026","Massachusetts CSA North of Boston April 2026",
       "South of Boston CSA April 2026","Maryland CSA November 2025","Maryland CSA (Edenwald) March 2026",
       "Maryland CSA April 2026 No Financials","Cape Live-In Special Rate","General Credit Card Page (All of Tribute)"];
