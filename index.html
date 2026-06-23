@@ -152,6 +152,8 @@
   .ldtotal { font-weight:800; font-size:16px; }
   .ldnote { font-size:13px; color:var(--hedge); background:var(--hedge-bg); border:1px solid var(--hedge-line); border-radius:9px; padding:8px 11px; margin:10px 0; }
   .ldtimebox { display:flex; gap:8px; }
+  .lddetail textarea { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:9px; font:14px/1.5 inherit; resize:vertical; min-height:84px; color:var(--ink); }
+  .lddetail input[type=text], .lddetail input[type=date] { width:100%; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
 </head>
@@ -981,6 +983,10 @@
     const MARKET_TEMPLATE = {CHI:"Chicago CSA June 2026", BOS:"Massachusetts CSA BOS and MWB April 2026", MWB:"Massachusetts CSA BOS and MWB April 2026",
       NB:"Massachusetts CSA North of Boston April 2026", SB:"South of Boston CSA April 2026", BAL:"Maryland CSA November 2025", ANN:"Maryland CSA November 2025", BET:"Maryland CSA November 2025"};
     const MARKET_LABEL = {CHI:"Chicago",BOS:"Boston",MWB:"MetroWest",NB:"North of Boston",SB:"South of Boston",BAL:"Baltimore",ANN:"Annapolis",BET:"Bethesda"};
+    const PHONE = {CHI:"(773) 840-7400", BOS:"(617) 517-5400", MWB:"(617) 517-5400", NB:"(617) 517-5400", SB:"(617) 517-5400", BAL:"(410) 946-8400", ANN:"(410) 946-8400", BET:"(410) 946-8400"};
+    function fmtDate(s){ if(!s) return ''; const dt=new Date(s.length<=10?s+'T00:00:00':s); return isNaN(dt)?s:dt.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}); }
+    function defSubject(d){ const nm=(d.clientName||d.name||'').trim().split(/\s+/); const fi=nm[0]?nm[0][0]+'. ':''; const last=nm.length>1?nm[nm.length-1]:(nm[0]||''); return (fi+last).trim()+' – Tribute Home Care Client Service Agreement'; }
+    function defBody(d, dateStr){ const ph=PHONE[d.market]||''; const on=dateStr?(' on '+fmtDate(dateStr)):''; return "Thank you for trusting Tribute with your loved one's care. Please review, sign, and return the attached form prior to the start of care"+on+". If you have any questions or concerns, please do not hesitate to reach out to us"+(ph?(' at '+ph):'')+"."; }
     const RATECARD = {
       "Chicago CSA June 2026":{tiers:[[1,3,62],[4,99,41]],livein:570},
       "Massachusetts CSA BOS and MWB April 2026":{tiers:[[0,3.99,65],[4,24,47]],livein:610},
@@ -1055,33 +1061,48 @@
     function open(i){ cur=i; const d=DEALS[i]; const t=pickTemplate(d); parsed=parseSchedule(d.sched,d.hpd);
       const opts=TEMPLATES.map(x=>`<option ${x===t?'selected':''}>${x}</option>`).join("");
       const hpdlbl=({"5":"24h","4":"12–23h","3":"9–11h","2":"5–8h","1":"1–4h"})[d.hpd]||"";
+      const clientNm=(d.clientName||d.name||''), email=d.clientEmail||'', sdate=d.startDate||'';
+      const subj=defSubject(d), body=defBody(d, sdate);
+      const esc=s=>String(s||'').replace(/"/g,'&quot;');
       $('ldQueue').classList.add('hide'); $('ldDetail').classList.remove('hide');
       $('ldDetail').innerHTML=`<div class="card lddetail">
         <div class="dh"><button class="ldback" onclick="LD.close()">← Queue</button><h2>${d.name}</h2>
           <span class="ldchip mkt" style="margin-left:auto">${MARKET_LABEL[d.market]||d.market}</span></div>
         <div class="ldfields">
-          <div class="ldf"><label>Schedule requested (from notes)</label><div class="v">${d.sched}</div></div>
-          <div class="ldf"><label>Est. weekly amount (HubSpot)</label><div class="v">$${d.amount.toLocaleString()}</div></div>
+          <div class="ldf"><label>Schedule requested (from notes)</label><div class="v">${d.sched||'—'}</div></div>
+          <div class="ldf"><label>Est. weekly amount (HubSpot)</label><div class="v">$${(d.amount||0).toLocaleString()}</div></div>
           <div class="ldf"><label>Service level</label><div class="v">${d.level} · ${hpdlbl} per visit</div></div>
           <div class="ldf"><label>Deal stage</label><div class="v">Qualified → <b>Contract Sent</b> on send</div></div>
-          <div class="ldf"><label>Client name (prefilled on CSA p.1)</label><div class="v">${d.name} <span class="muted" style="font-size:12px">· prod uses client-name field</span></div></div>
         </div>
         <label>✨ Specify visit times — plain English, fills the grid</label>
-        <div class="ldtimebox"><input type="text" id="ldTimes" value="${d.sched.replace(/"/g,'&quot;')}">
+        <div class="ldtimebox"><input type="text" id="ldTimes" value="${esc(d.sched)}">
           <button type="button" class="go" style="width:auto;margin:0;padding:9px 18px;white-space:nowrap" onclick="LD.apply()">Apply</button></div>
         <label>Template (auto-selected by area — override if needed)</label>
         <select id="ldTmpl" onchange="LD.grid()">${opts}</select>
         <div class="ldrate" id="ldRate"></div><div id="ldNote"></div><div id="ldGridWrap"></div>
+        <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:22px 0 10px">Recipient &amp; email</h3>
+        <div class="ldfields">
+          <div class="ldf"><label>Client name (signs · prefilled on p.1)</label><input type="text" id="ldClientName" value="${esc(clientNm)}"></div>
+          <div class="ldf"><label>Send to — client email <span style="color:var(--danger)">· verify</span></label><input type="text" id="ldClientEmail" value="${esc(email)}" placeholder="client@email.com"></div>
+          <div class="ldf"><label>Start of care date</label><input type="date" id="ldStartDate" value="${sdate}" onchange="LD.refreshBody()"></div>
+          <div class="ldf"><label>Email subject</label><input type="text" id="ldSubject" value="${esc(subj)}"></div>
+        </div>
+        <label>Email message to the client</label>
+        <textarea id="ldBody" rows="4">${body}</textarea>
         <div style="display:flex;gap:12px;align-items:center;margin-top:18px">
           <button type="button" class="go" style="width:auto;margin:0" onclick="LD.gen()">Generate DocuSign draft</button>
           <button type="button" class="toggle" style="margin:0" onclick="LD.close()">Back to queue</button>
           <span class="muted" id="ldGen">Not started</span></div>
       </div>`;
       renderGrid(); updateNote(); }
+    function refreshBody(){ $('ldBody').value = defBody(DEALS[cur], $('ldStartDate').value); }
     function close(){ $('ldDetail').classList.add('hide'); $('ldQueue').classList.remove('hide'); }
     function apply(){ parsed=parseSchedule($('ldTimes').value, DEALS[cur].hpd); renderGrid(); updateNote(); }
     async function gen(){
-      const d=DEALS[cur], t=$('ldTmpl').value; const pf={}; let total=0;
+      const d=DEALS[cur], t=$('ldTmpl').value;
+      const clientName=$('ldClientName').value.trim(), clientEmail=$('ldClientEmail').value.trim();
+      if(!/.+@.+\..+/.test(clientEmail)){ $('ldGen').innerHTML='<span style="color:var(--danger)">Enter a valid client email first.</span>'; $('ldClientEmail').focus(); return; }
+      const pf={}; let total=0;
       DAYS.forEach((dn,di)=>{ if(!parsed.days.includes(di)) return;
         const v1=parsed.visits[0], v2=parsed.visits[1];
         const r1=v1?rateForHours(t,v1.hours):0, r2=v2?rateForHours(t,v2.hours):0;
@@ -1094,7 +1115,7 @@
       $('ldGen').textContent='Generating…';
       try{
         const r=await fetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({dealId:d.id, template:t, clientName:d.clientName||d.name, clientEmail:d.clientEmail||'', prefill:pf, send:false})});
+          body:JSON.stringify({dealId:d.id, template:t, clientName, clientEmail, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:false})});
         const j=await r.json().catch(()=>({}));
         if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML='Connect DocuSign (top-right) first.'; dsConnect(); return; }
         if(!j.ok){ $('ldGen').innerHTML='<span style="color:var(--danger)">Error: '+(j.error||'failed')+(j.detail?(' — '+j.detail):'')+'</span>'; return; }
@@ -1112,7 +1133,7 @@
       }catch(e){ $('ldList').innerHTML='<div class="ldnote">Could not load leads: '+e.message+'</div>'; return; }
       renderList('');
     }
-    return {init, open, close, apply, grid:renderGrid, gen};
+    return {init, open, close, apply, grid:renderGrid, gen, refreshBody};
   })();
 </script>
 </body>
