@@ -318,6 +318,10 @@
       <div><label>Lead taken by</label><select id="d_lead_taken_by"></select></div>
       <div><label>Referral source thanked?</label><select id="d_thanked"><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select></div>
       <div><label>If not thanked — the plan</label><input type="text" id="d_thank_plan" autocomplete="off" /></div>
+      <div class="colspan ac"><label>Referral source — search HubSpot to associate &amp; get their email</label>
+        <input type="text" id="d_referral_search" autocomplete="off" placeholder="Type a referral partner's name or email…" />
+        <div id="d_referral_suggest" class="suggest hide"></div>
+        <div class="muted" id="d_referral_picked"></div></div>
     </div>
 
     <div class="fieldsub">Care logistics</div>
@@ -356,6 +360,20 @@
       <button type="button" class="go" id="d_create_both" style="width:auto;margin-top:0;flex:1.4;min-width:200px">Create deal &amp; post to Teams</button>
     </div>
     <div id="d_result"></div>
+
+    <div class="fieldsub">Thank the referral source — email from your Outlook</div>
+    <div class="sub2">AI drafts a partnership thank-you to the referral source from the lead details. Pick a referral source above to fill the recipient, then review, edit, and send from your signed-in Microsoft account.</div>
+    <div class="dealgrid">
+      <div><label>To</label><input type="text" id="e_to" autocomplete="off" placeholder="recipient email" /></div>
+      <div><label>Subject</label><input type="text" id="e_subject" autocomplete="off" /></div>
+    </div>
+    <label>Message</label>
+    <textarea id="e_body" style="min-height:180px" placeholder="Click “Draft with AI”, then edit before sending."></textarea>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center">
+      <button type="button" class="go" id="e_draft" style="width:auto;margin-top:0;padding:11px 20px">✨ Draft with AI</button>
+      <button type="button" class="go msbtn" id="e_send" style="width:auto;margin-top:0;padding:11px 20px">Send from Outlook</button>
+      <span class="muted" id="e_status"></span>
+    </div>
   </div>
   </div><!-- /view-intake -->
 
@@ -377,6 +395,7 @@
   const CLAUDEPROXY = VIVPROXY.replace('/vivProxy', '/claudeProxy');
   const HS_BASE = VIVPROXY.replace('/vivProxy', ''); // function-app /api base
   let lastResult = null;
+  let referralContact = null;  // chosen referral-source contact (id, name, email)
 
   // --- HubSpot per-user OAuth (opaque session id held in this browser) -------
   const SID_STORE = 'tribute_hs_sid';
@@ -437,7 +456,7 @@
     },
     cache: { cacheLocation: 'localStorage' },
   };
-  const GRAPH_SCOPES = ['User.Read', 'Team.ReadBasic.All', 'Channel.ReadBasic.All', 'ChannelMessage.Send'];
+  const GRAPH_SCOPES = ['User.Read', 'Team.ReadBasic.All', 'Channel.ReadBasic.All', 'ChannelMessage.Send', 'Mail.Send'];
   let msalApp = null;
 
   function setMsStatus(acct) {
@@ -561,7 +580,7 @@
       client_phone: dval('d_client_phone'), client_email: dval('d_client_email'),
       client_city: dval('d_client_city'), client_state: dval('d_client_state'),
       client_gender: dval('d_client_gender'), client_dob: dval('d_client_dob'),
-      referred_by_: dval('d_referred_by'), amount: dval('d_amount').replace(/[^0-9.]/g, ''), notes: dval('d_notes'),
+      referred_by_: dval('d_referred_by'), referral_contact_id: (referralContact && referralContact.id) || '', amount: dval('d_amount').replace(/[^0-9.]/g, ''), notes: dval('d_notes'),
       dealtype: dval('d_dealtype'), end_date_of_service: dval('d_end_date'),
       lead_source: dval('d_lead_source'), market_region: dval('d_market_region'), lead_taken_by: dval('d_lead_taken_by'),
       how_to_charge: dval('d_how_to_charge'), caregiver_match: dval('d_caregiver_match'), home_environment: homeEnvValue(),
@@ -962,6 +981,79 @@
   }
 
   syncCoverage();
+  // --- Referral-source lookup (search HubSpot contacts) ----------------------
+  let referralTimer = null;
+  function setupReferralSearch() {
+    const inp = document.getElementById('d_referral_search'); if (!inp) return;
+    const sug = document.getElementById('d_referral_suggest'), picked = document.getElementById('d_referral_picked');
+    inp.addEventListener('input', () => {
+      referralContact = null; picked.textContent = '';
+      const q = inp.value.trim(); clearTimeout(referralTimer);
+      if (q.length < 2) { sug.className = 'suggest hide'; return; }
+      referralTimer = setTimeout(async () => {
+        try {
+          const r = await fetch(HS_BASE + '/hubspotcontacts?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(q));
+          const j = await r.json(); const list = j.contacts || [];
+          if (j.error === 'not_connected') { sug.innerHTML = '<div style="color:var(--hedge)">Connect HubSpot first</div>'; sug.className = 'suggest'; return; }
+          if (!list.length) { sug.innerHTML = '<div style="color:var(--hint)">No matches</div>'; sug.className = 'suggest'; return; }
+          sug.innerHTML = list.map((c, i) => '<div data-i="' + i + '">' + esc(c.name) + (c.company ? ' · ' + esc(c.company) : '') + (c.email ? ' &lt;' + esc(c.email) + '&gt;' : '') + '</div>').join('');
+          sug.className = 'suggest';
+          [...sug.children].forEach((el, i) => el.onclick = () => {
+            referralContact = list[i]; inp.value = referralContact.name;
+            picked.innerHTML = '✓ Will associate <b>' + esc(referralContact.name) + '</b>' + (referralContact.email ? ' · ' + esc(referralContact.email) : ' · <span style="color:var(--hedge)">no email on file</span>');
+            const rb = document.getElementById('d_referred_by'); if (rb && !rb.value) rb.value = referralContact.name;
+            const et = document.getElementById('e_to'); if (et && !et.value && referralContact.email) et.value = referralContact.email;
+            sug.className = 'suggest hide';
+          });
+        } catch (e) { sug.className = 'suggest hide'; }
+      }, 280);
+    });
+    document.addEventListener('click', (e) => { if (!inp.contains(e.target) && !sug.contains(e.target)) sug.className = 'suggest hide'; });
+  }
+
+  // --- Follow-up email: AI draft (Tribute voice) + send from the rep's Outlook -
+  function msUserName() { try { const a = msalApp && msalApp.getActiveAccount && msalApp.getActiveAccount(); return a ? (a.name || a.username || '') : ''; } catch (e) { return ''; } }
+  function emailPrompt() {
+    return "You write a brief, gracious thank-you email from Tribute Home Care to a REFERRAL SOURCE — the professional or person who referred a prospective client. Match this voice exactly — warm, appreciative, partnership-oriented, concise (about 4-5 short paragraphs):\n"
+      + "- Greet the referral source by first name if given, otherwise 'Hi all,'.\n"
+      + "- Thank them for referring [client first name] to Tribute, noting the reason/situation from the notes (e.g. 'for support following her upcoming hip surgery on June 17th'). NEVER invent medical details — use only what's given; if unknown, keep it general.\n"
+      + "- Note that [client] connected with our Client Solutions Manager, [CSM/sender name], who confirmed we'll be establishing care to support them through their recovery / this transition.\n"
+      + "- One warm line looking forward to ensuring a smooth, successful transition / that we'll take great care of them.\n"
+      + "- Close by thanking them again for their trust in Tribute, that we value the partnership, and appreciate the opportunity to support [client].\n"
+      + "- Warm sign-off with the sender's first name.\n"
+      + "No bullet points in the email body. Return ONLY JSON: {\"subject\":str,\"body\":str}. Body = full email text with line breaks, signed by the sender's first name (use [Your name] if unknown).";
+  }
+  async function draftEmail() {
+    const status = document.getElementById('e_status'); status.textContent = 'Drafting…';
+    const ctx = { referral_source_name: (referralContact && referralContact.name) || '', csm_name: msUserName(),
+      client_first_name: dval('d_client_name'), notes: dval('d_notes'), schedule: dval('d_schedule'),
+      expected_start: dval('start_date') || '', sender_first_name: (msUserName().split(' ')[0] || '') };
+    try {
+      const r = await fetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1100, system: emailPrompt(), messages: [{ role: 'user', content: JSON.stringify(ctx) }] }) });
+      const j = await r.json();
+      let txt = (j.content && j.content[0] && j.content[0].text) || j.completion || '';
+      const m = txt.replace(/^```json\s*|\s*```$/g, '').match(/\{[\s\S]*\}/);
+      const parsed = m ? JSON.parse(m[0]) : null;
+      if (parsed) { document.getElementById('e_subject').value = parsed.subject || ''; document.getElementById('e_body').value = parsed.body || ''; status.textContent = 'Draft ready — review & edit, then send.'; }
+      else { status.innerHTML = '<span style="color:var(--danger)">Could not parse the draft.</span>'; }
+    } catch (e) { status.innerHTML = '<span style="color:var(--danger)">' + e.message + '</span>'; }
+  }
+  async function sendMail(to, subject, body) {
+    const token = await graphToken(); if (!token) throw new Error('Sign in with Microsoft first (top-right).');
+    const payload = { message: { subject: subject || '(no subject)', body: { contentType: 'Text', content: body }, toRecipients: [{ emailAddress: { address: to } }] }, saveToSentItems: true };
+    const r = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!r.ok && r.status !== 202) { const t = await r.text(); throw new Error('Mail ' + r.status + ' ' + t.slice(0, 140)); }
+  }
+  async function sendFollowup() {
+    const to = dval('e_to'), subject = dval('e_subject'), body = document.getElementById('e_body').value, status = document.getElementById('e_status');
+    if (!/.+@.+\..+/.test(to)) { status.innerHTML = '<span style="color:var(--danger)">Enter a valid recipient email.</span>'; return; }
+    if (!body.trim()) { status.innerHTML = '<span style="color:var(--danger)">Draft the message first.</span>'; return; }
+    status.textContent = 'Sending…';
+    try { await sendMail(to, subject, body); status.innerHTML = '✅ Sent from your Outlook to ' + esc(to) + '.'; }
+    catch (e) { status.innerHTML = '<span style="color:var(--danger)">' + e.message + '</span>'; }
+  }
+
   document.getElementById('hsConnect').onclick = hsConnect;
   document.getElementById('dsConnect').onclick = dsConnect;
   document.getElementById('msSignin').onclick = msSignIn;
@@ -970,6 +1062,9 @@
   document.getElementById('d_create_deal').onclick = () => submitLead(true, false);
   document.getElementById('d_post_teams').onclick = () => submitLead(false, true);
   document.getElementById('d_create_both').onclick = () => submitLead(true, true);
+  document.getElementById('e_draft').onclick = draftEmail;
+  document.getElementById('e_send').onclick = sendFollowup;
+  setupReferralSearch();
   initDealSelects();
   document.getElementById('d_stage').onchange = syncStage;
   hsWhoami();
