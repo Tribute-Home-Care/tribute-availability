@@ -296,6 +296,12 @@
         <button type="button" data-v="male">Male</button>
       </div>
 
+      <label>Driver needed?</label>
+      <div class="seg" id="driver">
+        <button type="button" data-v="" class="on">Any</button>
+        <button type="button" data-v="1">Must drive 🚗</button>
+      </div>
+
       <label>Restrictions</label>
       <div class="chips" id="checks">
         <span class="chip" data-v="dog">Dog</span>
@@ -702,6 +708,7 @@
     setSegVal('day_length', 'day_length', a.day_length);
     setSegVal('recurrence', 'recurrence', a.recurrence, () => document.getElementById('daysWrap').classList.toggle('hide', state.recurrence !== 'specific'));
     setSegVal('gender', 'gender', a.gender_preference);
+    setSegVal('driver', 'driver', a.driver_required ? '1' : '');
     if (Array.isArray(a.days_of_week)) setDaysVal(a.days_of_week);
     if (a.address) { const ai = document.getElementById('client_address'); if (ai) { ai.value = a.address; state.coords = null; } }
     setInputVal('start_date', a.start_date);
@@ -732,7 +739,7 @@
     const wd = now.toLocaleDateString('en-US', { weekday: 'long' });
     const iso = now.toISOString().slice(0, 10);
     return 'You parse a home-care lead-taker\'s free-text notes into (1) an availability-check intake, (2) a HubSpot deal, and (3) a Teams post for Tribute Home Care. Return ONLY valid JSON (no prose, no markdown fences): {"dealname":str,"teams_subject":str,"teams_summary":str,"availability":{...},"fields":{...},"unmapped":[str]}.\n'
-      + 'availability (omit if unknown): coverage [Days, Overnights, 24/7, Live-in]; day_length [Long, Short] (Short=under ~5h/visit); recurrence [weekly, specific]; days_of_week array ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address (>=town + state; infer from venue); start_date YYYY-MM-DD; gender_preference [male, female] (omit if either); restrictions array subset of [dog, cat, smoking] — include "dog" if there is a dog/dogs in the home, "cat" if a cat, "smoking" if anyone smokes.\n'
+      + 'availability (omit if unknown): coverage [Days, Overnights, 24/7, Live-in]; day_length [Long, Short] (Short=under ~5h/visit); recurrence [weekly, specific]; days_of_week array ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address (>=town + state; infer from venue); start_date YYYY-MM-DD; gender_preference [male, female] (omit if either); driver_required [true] (ONLY if the caller explicitly needs a caregiver who can drive/transport the client); restrictions array subset of [dog, cat, smoking] — include "dog" if there is a dog/dogs in the home, "cat" if a cat, "smoking" if anyone smokes.\n'
       + 'fields (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender [Female, Male], client_dob; location_of_care [Private Home, Residence (non Brightview), Residence (Brightview)] (Private Home=house/apartment; Brightview=a Brightview community; non Brightview=other senior community — street address goes in availability.address NOT here); service_level [A,B,C,D,Live-In] (WEEKLY hours A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); schedule_requested; end_date_of_service(YYYY-MM-DD); referred_by_; amount (number); lead_source [Assisted Living, Geriatric Care Manager (GCM), Home Health Care, Hospice, Hospital, Independent Living, Physician, Skilled Nursing Facility / Rehab, Tribute Employee, Tribute Client, Website, Unknown, Professional (non-medical)]; market_region [BOS, MWB, NB, SB, BAL, ANN, BET, NVA, CHI, NNJ] (Boston=BOS, MetroWest=MWB, North-of-Boston=NB, South-of-Boston=SB, Baltimore=BAL, Annapolis=ANN, Bethesda=BET, Chicago=CHI); dealtype [newbusiness, existingbusiness] (default newbusiness); home_environment array subset of [Cats in Home, Dogs in Home, No Pets in Home, Smokers in Home, Non-Smokers in Home, Parking Available, No Parking Available]; tone_of_call [Calm, Stressed, Skeptical, Rushed]; was_referral_source_thanked_ ["true","false"]; how_to_charge; caregiver_match; notes (clean General Summary of situation + care needs); scheduling_follow_up; client_solutions_followup (next steps); details_about_client__personality__interests__behaviors__social_history; description (short deal description).\n'
       + 'teams_subject: short subject line e.g. "LEAD — <community/town> (<client name(s)>)". teams_summary: 3-5 line plain-text Teams post; say "visit", never "shift". unmapped: anything important not fitting a field (e.g. "1.5-person rate", deadlines). Resolve relative dates; today is ' + wd + ' ' + iso + '.';
   }
@@ -775,7 +782,7 @@
   if (!getKey()) showGate();
 
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const state = { coverage:'Days', day_length:'Long', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), gender:'', coords:null };
+  const state = { coverage:'Days', day_length:'Long', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), gender:'', driver:'', coords:null };
 
   const daysEl = document.getElementById('days');
   DOW.forEach((d,i) => {
@@ -801,6 +808,7 @@
   seg('day_length','day_length');
   seg('recurrence','recurrence', () => document.getElementById('daysWrap').classList.toggle('hide', state.recurrence!=='specific'));
   seg('gender','gender');
+  seg('driver','driver');
   document.querySelectorAll('#checks .chip').forEach(c => c.onclick = () => {
     c.classList.toggle('on'); c.classList.contains('on')?state.restrictions.add(c.dataset.v):state.restrictions.delete(c.dataset.v);
   });
@@ -860,6 +868,7 @@
         days_of_week: state.recurrence==='specific' ? [...state.days] : undefined,
         restrictions: [...state.restrictions],
         gender_preference: state.gender || undefined,
+        driver_required: state.driver === '1' ? true : undefined,
       };
       const res = await fetch(VIVPROXY + '?endpoint=availability_qualify&key=' + encodeURIComponent(getKey()), {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
