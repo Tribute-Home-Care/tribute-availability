@@ -395,8 +395,21 @@
     else { el.textContent = 'HubSpot: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect HubSpot'; }
   }
   async function hsWhoami() {
-    try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected && j.ownerId) setSelectVal('d_lead_taken_by', String(j.ownerId)); return j; }
+    try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) setSelectVal('d_lead_taken_by', String(j.ownerId)); loadOwners(j.ownerId); } return j; }
     catch (e) { setHsStatus({ connected: false }); return { connected: false }; }
+  }
+  // Populate the "Lead taken by" dropdown live from HubSpot owners (so every rep + new hire shows up).
+  async function loadOwners(selId) {
+    try {
+      const r = await fetch(HS_BASE + '/hubspotowners?sid=' + encodeURIComponent(hsSid()));
+      const j = await r.json();
+      if (j.owners && j.owners.length) {
+        const lt = document.getElementById('d_lead_taken_by'); if (!lt) return;
+        const keep = selId || lt.value;
+        lt.innerHTML = '<option value="">—</option>' + j.owners.map(o => '<option value="' + o.id + '">' + o.name.replace(/</g, '&lt;') + '</option>').join('');
+        if (keep) lt.value = String(keep);
+      }
+    } catch (e) {}
   }
   function hsConnect() { window.open(HS_BASE + '/hubspotoauthstart?sid=' + encodeURIComponent(hsSid()), 'hsoauth', 'width=620,height=760'); }
   window.addEventListener('message', (e) => { if (e && e.data && e.data.hubspotConnected) hsWhoami(); });
