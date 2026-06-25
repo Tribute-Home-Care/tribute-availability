@@ -374,11 +374,17 @@
       <div><label>Lead source</label><select id="d_lead_source"></select></div>
       <div><label>Market / region</label><select id="d_market_region"></select></div>
       <div><label>Deal type</label><select id="d_dealtype"><option value="newbusiness" selected>New Business</option><option value="existingbusiness">Existing Business</option></select></div>
-      <div><label>Lead taken by</label><select id="d_lead_taken_by"></select></div>
+      <div><label>Lead taken by <span style="color:#B91C1C">*</span></label><select id="d_lead_taken_by"></select></div>
+      <div><label>Deal owner <span style="color:#B91C1C">*</span></label><select id="d_deal_owner"></select>
+        <span class="muted">Defaults to you. Set to the lead's <b>region rep</b> when covering after-hours or another region — otherwise their team can't see it.</span></div>
       <div><label>Referral source thanked?</label><select id="d_thanked"><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select></div>
       <div><label>If not thanked — the plan</label><input type="text" id="d_thank_plan" autocomplete="off" /></div>
-      <div class="colspan ac"><label>Referral source — search HubSpot to associate &amp; get their email</label>
-        <input type="text" id="d_referral_search" autocomplete="off" placeholder="Type a referral partner's name or email…" />
+      <div class="colspan ac"><label>Associated <b>Company</b> — referral partner (search HubSpot)</label>
+        <input type="text" id="d_company_search" autocomplete="off" placeholder="Type the referring company / community…" />
+        <div id="d_company_suggest" class="suggest hide"></div>
+        <div class="muted" id="d_company_picked">Pulls from the Company database for clean partner reporting. Leave blank if the partner has no Company record.</div></div>
+      <div class="colspan ac"><label>Associated <b>Contact</b> — referring person (search HubSpot)</label>
+        <input type="text" id="d_referral_search" autocomplete="off" placeholder="Type the referring person's name or email…" />
         <div id="d_referral_suggest" class="suggest hide"></div>
         <div class="muted" id="d_referral_picked"></div></div>
     </div>
@@ -455,6 +461,7 @@
   const HS_BASE = VIVPROXY.replace('/vivProxy', ''); // function-app /api base
   let lastResult = null;
   let referralContact = null;  // chosen referral-source contact (id, name, email)
+  let referralCompany = null;  // chosen Associated Company (referral partner)
 
   // --- HubSpot per-user OAuth (opaque session id held in this browser) -------
   const SID_STORE = 'tribute_hs_sid';
@@ -473,19 +480,22 @@
     else { el.textContent = 'HubSpot: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect HubSpot'; }
   }
   async function hsWhoami() {
-    try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) setSelectVal('d_lead_taken_by', String(j.ownerId)); loadOwners(j.ownerId); } return j; }
+    try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId); } return j; }
     catch (e) { setHsStatus({ connected: false }); return { connected: false }; }
   }
-  // Populate the "Lead taken by" dropdown live from HubSpot owners (so every rep + new hire shows up).
+  // Populate "Lead taken by" + "Deal owner" live from HubSpot owners (every rep + new hire).
   async function loadOwners(selId) {
     try {
       const r = await fetch(HS_BASE + '/hubspotowners?sid=' + encodeURIComponent(hsSid()));
       const j = await r.json();
       if (j.owners && j.owners.length) {
-        const lt = document.getElementById('d_lead_taken_by'); if (!lt) return;
-        const keep = selId || lt.value;
-        lt.innerHTML = '<option value="">—</option>' + j.owners.map(o => '<option value="' + o.id + '">' + o.name.replace(/</g, '&lt;') + '</option>').join('');
-        if (keep) lt.value = String(keep);
+        const opts = '<option value="">—</option>' + j.owners.map(o => '<option value="' + o.id + '">' + o.name.replace(/</g, '&lt;') + '</option>').join('');
+        ['d_lead_taken_by', 'd_deal_owner'].forEach(id => {
+          const el = document.getElementById(id); if (!el) return;
+          const keep = selId || el.value;
+          el.innerHTML = opts;
+          if (keep) el.value = String(keep);
+        });
       }
     } catch (e) {}
   }
@@ -603,7 +613,9 @@
   function initDealSelects() {
     const ls = document.getElementById('d_lead_source'); if (ls) ls.innerHTML = optList(LEAD_SOURCES);
     const mr = document.getElementById('d_market_region'); if (mr) mr.innerHTML = optList(MARKET_REGIONS);
-    const lt = document.getElementById('d_lead_taken_by'); if (lt) lt.innerHTML = '<option value="">—</option>' + LEAD_TAKERS.map(o => '<option value="' + o[0] + '">' + esc(o[1]) + '</option>').join('');
+    const ownerOpts = '<option value="">—</option>' + LEAD_TAKERS.map(o => '<option value="' + o[0] + '">' + esc(o[1]) + '</option>').join('');
+    const lt = document.getElementById('d_lead_taken_by'); if (lt) lt.innerHTML = ownerOpts;
+    const do_ = document.getElementById('d_deal_owner'); if (do_) do_.innerHTML = ownerOpts;
     const he = document.getElementById('d_home_env');
     if (he) { he.innerHTML = HOME_ENV.map(s => '<span class="chip" data-v="' + esc(s) + '">' + esc(s) + '</span>').join(''); he.querySelectorAll('.chip').forEach(c => c.onclick = () => c.classList.toggle('on')); }
   }
@@ -639,9 +651,12 @@
       client_phone: dval('d_client_phone'), client_email: dval('d_client_email'),
       client_city: dval('d_client_city'), client_state: dval('d_client_state'),
       client_gender: dval('d_client_gender'), client_dob: dval('d_client_dob'),
-      referred_by_: dval('d_referred_by'), referral_contact_id: (referralContact && referralContact.id) || '', amount: dval('d_amount').replace(/[^0-9.]/g, ''), notes: dval('d_notes'),
+      referred_by_: dval('d_referred_by'),
+      referral_company_id: (referralCompany && referralCompany.id) || '', referral_contact_id: (referralContact && referralContact.id) || '',
+      amount: dval('d_amount').replace(/[^0-9.]/g, ''), notes: dval('d_notes'),
       dealtype: dval('d_dealtype'), end_date_of_service: dval('d_end_date'),
-      lead_source: dval('d_lead_source'), market_region: dval('d_market_region'), lead_taken_by: dval('d_lead_taken_by'),
+      lead_source: dval('d_lead_source'), market_region: dval('d_market_region'),
+      lead_taken_by: dval('d_lead_taken_by'), deal_owner: dval('d_deal_owner'),
       how_to_charge: dval('d_how_to_charge'), caregiver_match: dval('d_caregiver_match'), home_environment: homeEnvValue(),
       holiday_and_24_hour_cancellation_policies_reviewed: dval('d_policies'),
       was_referral_source_thanked_: dval('d_thanked'), if_referral_source_was_not_thanked__what_is_the_plan_: dval('d_thank_plan'),
@@ -654,19 +669,49 @@
   }
   const actionBtns = () => ['d_create_deal', 'd_post_teams', 'd_create_both'].map(id => document.getElementById(id)).filter(Boolean);
 
+  // Required for clean reporting + team visibility (a deal with no owner / no lead-taker
+  // won't show in HubSpot views and reports). Returns the labels of any that are empty.
+  const REQUIRED = [['d_dealname', 'Deal name'], ['d_market_region', 'Market / region'], ['d_lead_taken_by', 'Lead taken by'], ['d_deal_owner', 'Deal owner']];
+  function validateDeal() {
+    const missing = [];
+    REQUIRED.forEach(([id, label]) => {
+      const el = document.getElementById(id); const v = el ? (el.value || '').trim() : '';
+      if (!v) { missing.push(label); if (el) el.style.borderColor = '#B91C1C'; }
+      else if (el) { el.style.borderColor = ''; }
+    });
+    return missing;
+  }
+  function resetLeadForm() {
+    const card = document.getElementById('dealCard');
+    card.querySelectorAll('input[type=text],input[type=date],textarea').forEach(el => { el.value = ''; el.style.borderColor = ''; });
+    card.querySelectorAll('select').forEach(el => { el.value = (el.id === 'd_dealtype') ? 'newbusiness' : (el.id === 'd_stage') ? 'qualifiedtobuy' : ''; });
+    document.getElementById('d_notes_raw').value = '';
+    referralCompany = null; referralContact = null;
+    const cp = document.getElementById('d_company_picked'); if (cp) cp.textContent = 'Pulls from the Company database for clean partner reporting. Leave blank if the partner has no Company record.';
+    const rp = document.getElementById('d_referral_picked'); if (rp) rp.textContent = '';
+    document.getElementById('d_result').innerHTML = '';
+    actionBtns().forEach(b => b.disabled = false);
+    hsWhoami();   // re-set Lead taken by + Deal owner to the connected rep
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   // doDeal / doTeams flags drive the three buttons (HubSpot only · Teams only · both).
   async function submitLead(doDeal, doTeams) {
     const res = document.getElementById('d_result');
+    if (doDeal) {
+      const missing = validateDeal();
+      if (missing.length) { res.innerHTML = '<div class="caveat"><b>Complete these required fields first:</b> ' + missing.join(', ') + '.</div>'; return; }
+    }
     res.innerHTML = ''; actionBtns().forEach(b => b.disabled = true);
-    let msg = '';
+    let msg = '', dealOk = false;
     try {
       if (doDeal) {
         const who = await hsWhoami();
-        if (!who.connected) { res.innerHTML = '<div class="caveat">Connect HubSpot first (top-right), then try again.</div>'; hsConnect(); return; }
+        if (!who.connected) { res.innerHTML = '<div class="caveat">Connect HubSpot first (top-right), then try again.</div>'; hsConnect(); actionBtns().forEach(b => b.disabled = false); return; }
         const r = await fetch(HS_BASE + '/hubspotcreatedeal?sid=' + encodeURIComponent(hsSid()), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dealBody()) });
         const j = await r.json();
-        if (j.ok) msg += '<div class="ok">✓ Deal created — owned by ' + esc(j.owner || who.user) + '. <a href="' + esc(j.url) + '" target="_blank">Open in HubSpot ↗</a></div>';
-        else if (j.error === 'not_connected') { res.innerHTML = '<div class="caveat">HubSpot session expired — reconnect (top-right).</div>'; hsConnect(); return; }
+        if (j.ok) { dealOk = true; msg += '<div class="ok">✓ Deal created — owned by ' + esc(j.owner || who.user) + '. <a href="' + esc(j.url) + '" target="_blank">Open in HubSpot ↗</a></div>'; }
+        else if (j.error === 'not_connected') { res.innerHTML = '<div class="caveat">HubSpot session expired — reconnect (top-right).</div>'; hsConnect(); actionBtns().forEach(b => b.disabled = false); return; }
         else msg += '<div class="caveat"><b>Could not create deal:</b> ' + esc(j.error || 'unknown') + (j.detail ? ' — ' + esc(j.detail) : '') + '</div>';
       }
       if (doTeams) {
@@ -679,8 +724,17 @@
         }
       }
       res.innerHTML = msg;
-    } catch (e) { res.innerHTML = '<div class="caveat">Request failed: ' + esc(e.message) + '</div>'; }
-    finally { actionBtns().forEach(b => b.disabled = false); }
+      if (dealOk) {
+        // Lock the form after a successful create so the same lead can't be submitted twice.
+        res.innerHTML += '<div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+          + '<button type="button" class="go" id="d_newlead" style="width:auto;margin:0;padding:10px 18px">＋ Start a new lead</button>'
+          + '<span class="muted" style="margin:0">Form locked to avoid creating a duplicate deal.</span></div>';
+        document.getElementById('d_newlead').onclick = resetLeadForm;
+        // deal buttons stay disabled until "Start a new lead"
+      } else {
+        actionBtns().forEach(b => b.disabled = false);
+      }
+    } catch (e) { res.innerHTML = '<div class="caveat">Request failed: ' + esc(e.message) + '</div>'; actionBtns().forEach(b => b.disabled = false); }
   }
 
   // --- AI parse: one notes box -> availability intake + deal form + Teams draft
@@ -1073,21 +1127,51 @@
     document.addEventListener('click', (e) => { if (!inp.contains(e.target) && !sug.contains(e.target)) sug.className = 'suggest hide'; });
   }
 
+  // --- Associated Company lookup (search HubSpot companies) — basis of partner reporting ---
+  function setupCompanySearch() {
+    const inp = document.getElementById('d_company_search'); if (!inp) return;
+    const sug = document.getElementById('d_company_suggest'), picked = document.getElementById('d_company_picked');
+    const DEF = picked.textContent; let t = null;
+    inp.addEventListener('input', () => {
+      referralCompany = null; picked.textContent = DEF;
+      const q = inp.value.trim(); clearTimeout(t);
+      if (q.length < 2) { sug.className = 'suggest hide'; return; }
+      t = setTimeout(async () => {
+        try {
+          const r = await fetch(HS_BASE + '/hubspotcompanies?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(q));
+          const j = await r.json(); const list = j.companies || [];
+          if (j.error === 'not_connected') { sug.innerHTML = '<div style="color:var(--hedge)">Connect HubSpot first</div>'; sug.className = 'suggest'; return; }
+          if (!list.length) { sug.innerHTML = '<div style="color:var(--hint)">No Company record — leave blank or use “Referred by”</div>'; sug.className = 'suggest'; return; }
+          sug.innerHTML = list.map((c, i) => '<div data-i="' + i + '">' + esc(c.name) + (c.place ? ' · ' + esc(c.place) : '') + (c.domain ? ' &lt;' + esc(c.domain) + '&gt;' : '') + '</div>').join('');
+          sug.className = 'suggest';
+          [...sug.children].forEach((el, i) => el.onclick = () => {
+            referralCompany = list[i]; inp.value = referralCompany.name;
+            picked.innerHTML = '✓ Will associate Company <b>' + esc(referralCompany.name) + '</b>' + (referralCompany.place ? ' · ' + esc(referralCompany.place) : '');
+            const rb = document.getElementById('d_referred_by'); if (rb && !rb.value) rb.value = referralCompany.name;
+            sug.className = 'suggest hide';
+          });
+        } catch (e) { sug.className = 'suggest hide'; }
+      }, 280);
+    });
+    document.addEventListener('click', (e) => { if (!inp.contains(e.target) && !sug.contains(e.target)) sug.className = 'suggest hide'; });
+  }
+
   // --- Follow-up email: AI draft (Tribute voice) + send from the rep's Outlook -
   function msUserName() { try { const a = msalApp && msalApp.getActiveAccount && msalApp.getActiveAccount(); return a ? (a.name || a.username || '') : ''; } catch (e) { return ''; } }
   function emailPrompt() {
     return "You write a brief, gracious thank-you email from Tribute Home Care to a REFERRAL SOURCE — the professional or person who referred a prospective client. Match this voice exactly — warm, appreciative, partnership-oriented, concise (about 4-5 short paragraphs):\n"
       + "- Greet the referral source by first name if given, otherwise 'Hi all,'.\n"
       + "- Thank them for referring [client first name] to Tribute, noting the reason/situation from the notes (e.g. 'for support following her upcoming hip surgery on June 17th'). NEVER invent medical details — use only what's given; if unknown, keep it general.\n"
-      + "- Note that [client] connected with our Client Solutions Manager, [CSM/sender name], who confirmed we'll be establishing care to support them through their recovery / this transition.\n"
-      + "- One warm line looking forward to ensuring a smooth, successful transition / that we'll take great care of them.\n"
+      + "- Reflect the CURRENT status truthfully from deal_stage. If deal_stage is 'closedwon' (care is confirmed) you MAY say care is being established / scheduled to begin. For ANY other stage (e.g. 'qualifiedtobuy'), DO NOT say care is scheduled, starting, or confirmed — instead say [client] has connected with our Client Solutions Manager, [CSM/sender name], and we're working with the family to find the right care. NEVER state a start date unless one is explicitly given in the notes.\n"
+      + "- One warm line that we look forward to the opportunity to support [client] (do not promise a timeline).\n"
       + "- Close by thanking them again for their trust in Tribute, that we value the partnership, and appreciate the opportunity to support [client].\n"
       + "- Warm sign-off with the sender's first name.\n"
       + "No bullet points in the email body. Return ONLY JSON: {\"subject\":str,\"body\":str}. Body = full email text with line breaks, signed by the sender's first name (use [Your name] if unknown).";
   }
   async function draftEmail() {
     const status = document.getElementById('e_status'); status.textContent = 'Drafting…';
-    const ctx = { referral_source_name: (referralContact && referralContact.name) || '', csm_name: msUserName(),
+    const ctx = { referral_source_name: (referralContact && referralContact.name) || '', referral_company: (referralCompany && referralCompany.name) || '',
+      csm_name: msUserName(), deal_stage: dval('d_stage'),
       client_first_name: dval('d_client_name'), notes: dval('d_notes'), schedule: dval('d_schedule'),
       expected_start: dval('start_date') || '', sender_first_name: (msUserName().split(' ')[0] || '') };
     try {
@@ -1127,6 +1211,7 @@
   document.getElementById('e_draft').onclick = draftEmail;
   document.getElementById('e_send').onclick = sendFollowup;
   setupReferralSearch();
+  setupCompanySearch();
   initDealSelects();
   document.getElementById('d_stage').onchange = syncStage;
   hsWhoami();
