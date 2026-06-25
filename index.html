@@ -426,8 +426,12 @@
     </div>
     <div id="d_result"></div>
 
-    <div class="fieldsub">Thank the referral source — email from your Outlook</div>
-    <div class="sub2">AI drafts a partnership thank-you to the referral source from the lead details. Pick a referral source above to fill the recipient, then review, edit, and send from your signed-in Microsoft account.</div>
+    <div class="fieldsub">Follow-up email — from your Outlook</div>
+    <div class="sub2">AI drafts the email from the lead details in Tribute's voice. Choose who it's to, then review, edit, and send from your signed-in Microsoft account.</div>
+    <div class="seg" id="e_mode" style="max-width:440px;margin-bottom:14px">
+      <button type="button" data-m="referral" class="on">Thank the referral source</button>
+      <button type="button" data-m="family">Follow up with the family</button>
+    </div>
     <div class="dealgrid">
       <div><label>To</label><input type="text" id="e_to" autocomplete="off" placeholder="recipient email" /></div>
       <div><label>Subject</label><input type="text" id="e_subject" autocomplete="off" /></div>
@@ -671,7 +675,24 @@
 
   // Required for clean reporting + team visibility (a deal with no owner / no lead-taker
   // won't show in HubSpot views and reports). Returns the labels of any that are empty.
-  const REQUIRED = [['d_dealname', 'Deal name'], ['d_market_region', 'Market / region'], ['d_lead_taken_by', 'Lead taken by'], ['d_deal_owner', 'Deal owner']];
+  const REQUIRED = [
+    ['d_dealname', 'Deal name'], ['d_stage', 'Deal stage'], ['d_market_region', 'Market / region'],
+    ['d_caller_name', 'Caller name'], ['d_caller_rel', "Caller's relationship to client"],
+    ['d_client_name', 'Client first name'], ['d_client_last', 'Client last name'], ['d_client_city', 'Client city'],
+    ['d_amount', 'Amount'], ['d_location', 'Location of care'], ['d_service_level', 'Service level'],
+    ['d_notes', 'General summary / reason for service'], ['d_client_details', 'Details about client'],
+    ['d_next_steps', 'Next steps'], ['d_tone', 'Tone of the call'],
+    ['d_policies', 'Holiday / 24-hr cancellation policies reviewed'],
+    ['d_lead_source', 'Lead source'], ['d_lead_taken_by', 'Lead taken by'], ['d_deal_owner', 'Deal owner'],
+    ['d_referred_by', 'Referred by'], ['d_thanked', 'Was referral source thanked?'],
+  ];
+  function markRequired() {
+    REQUIRED.forEach(([id]) => {
+      const el = document.getElementById(id); if (!el) return;
+      const wrap = el.closest('div'); const lbl = wrap ? wrap.querySelector('label') : null;
+      if (lbl && lbl.innerHTML.indexOf('*') < 0) lbl.insertAdjacentHTML('beforeend', ' <span style="color:#B91C1C">*</span>');
+    });
+  }
   function validateDeal() {
     const missing = [];
     REQUIRED.forEach(([id, label]) => {
@@ -1168,15 +1189,37 @@
       + "- Warm sign-off with the sender's first name.\n"
       + "No bullet points in the email body. Return ONLY JSON: {\"subject\":str,\"body\":str}. Body = full email text with line breaks, signed by the sender's first name (use [Your name] if unknown).";
   }
+  // Family / caller consideration-stage follow-up (matches the Ask Tribute structure + house voice).
+  let emailMode = 'referral';
+  function familyEmailPrompt() {
+    return "You write a warm, personal follow-up email from a Tribute Home Care Client Solutions Manager to the FAMILY / caller after a phone call about their loved one (a prospective client still in the consideration stage). Match this voice EXACTLY — warm, empathetic, unhurried, personal, never salesy. Flowing prose, NO bullet points, about 4 short paragraphs:\n"
+      + "1. Thank them sincerely for taking the time to speak today about their loved one (use the caller's first name(s) if given).\n"
+      + "2. Show genuine empathy about the specific situation/condition in the notes (e.g. Parkinson's), and acknowledge how much they clearly care for their loved one. NEVER invent medical details — use only what's given; if unknown, keep it general.\n"
+      + "3. Reassure them you're here as they work through next steps and happy to answer any questions. Share our 'Working with Us' page to pass along to family: https://tributehomecare.com/workingwithus/ . Offer to have a Client Solutions Manager come out to meet the family in person, and note Tribute is glad to be a resource even if they go a different direction or need to delay care for any reason.\n"
+      + "4. Thank them for considering Tribute, and commit to checking back around their expected start timeframe if you don't hear from them (use expected_start / notes if given — e.g. 'in the next month or so, as I know you were hoping to start in late summer').\n"
+      + "End with a personal, friendly sign-off — use a specific hook from the notes if there is one (e.g. enjoy a visit / have a lovely weekend) — then 'Warmly,' and the sender's first name.\n"
+      + "Return ONLY JSON: {\"subject\":str,\"body\":str}. Body = the full email with line breaks.";
+  }
+  function setupEmailMode() {
+    const seg = document.getElementById('e_mode'); if (!seg) return;
+    seg.querySelectorAll('button').forEach(b => b.onclick = () => {
+      seg.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on');
+      emailMode = b.dataset.m;
+      const et = document.getElementById('e_to');
+      et.value = (emailMode === 'family') ? (dval('d_caller_email') || dval('d_client_email') || '') : ((referralContact && referralContact.email) || '');
+      document.getElementById('e_subject').value = ''; document.getElementById('e_body').value = ''; document.getElementById('e_status').textContent = '';
+    });
+  }
   async function draftEmail() {
     const status = document.getElementById('e_status'); status.textContent = 'Drafting…';
-    const ctx = { referral_source_name: (referralContact && referralContact.name) || '', referral_company: (referralCompany && referralCompany.name) || '',
-      csm_name: msUserName(), deal_stage: dval('d_stage'),
-      client_first_name: dval('d_client_name'), notes: dval('d_notes'), schedule: dval('d_schedule'),
-      expected_start: dval('start_date') || '', sender_first_name: (msUserName().split(' ')[0] || '') };
+    const fam = emailMode === 'family';
+    const sys = fam ? familyEmailPrompt() : emailPrompt();
+    const ctx = fam
+      ? { caller_name: dval('d_caller_name'), client_first_name: dval('d_client_name'), notes: dval('d_notes'), schedule: dval('d_schedule'), expected_start: dval('start_date') || '', sender_first_name: (msUserName().split(' ')[0] || '') }
+      : { referral_source_name: (referralContact && referralContact.name) || '', referral_company: (referralCompany && referralCompany.name) || '', csm_name: msUserName(), deal_stage: dval('d_stage'), client_first_name: dval('d_client_name'), notes: dval('d_notes'), schedule: dval('d_schedule'), expected_start: dval('start_date') || '', sender_first_name: (msUserName().split(' ')[0] || '') };
     try {
       const r = await fetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1100, system: emailPrompt(), messages: [{ role: 'user', content: JSON.stringify(ctx) }] }) });
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1100, system: sys, messages: [{ role: 'user', content: JSON.stringify(ctx) }] }) });
       const j = await r.json();
       let txt = (j.content && j.content[0] && j.content[0].text) || j.completion || '';
       const m = txt.replace(/^```json\s*|\s*```$/g, '').match(/\{[\s\S]*\}/);
@@ -1212,7 +1255,9 @@
   document.getElementById('e_send').onclick = sendFollowup;
   setupReferralSearch();
   setupCompanySearch();
+  setupEmailMode();
   initDealSelects();
+  markRequired();
   document.getElementById('d_stage').onchange = syncStage;
   hsWhoami();
   dsWhoami();
