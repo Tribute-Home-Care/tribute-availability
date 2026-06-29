@@ -489,12 +489,14 @@
     try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId); } return j; }
     catch (e) { setHsStatus({ connected: false }); return { connected: false }; }
   }
+  let ownerEmailById = {};
   // Populate "Lead taken by" + "Deal owner" live from HubSpot owners (every rep + new hire).
   async function loadOwners(selId) {
     try {
       const r = await fetch(HS_BASE + '/hubspotowners?sid=' + encodeURIComponent(hsSid()));
       const j = await r.json();
       if (j.owners && j.owners.length) {
+        j.owners.forEach(o => { if (o.id) ownerEmailById[String(o.id)] = o.email || ''; });
         const opts = '<option value="">—</option>' + j.owners.map(o => '<option value="' + o.id + '">' + o.name.replace(/</g, '&lt;') + '</option>').join('');
         ['d_lead_taken_by', 'd_deal_owner'].forEach(id => {
           const el = document.getElementById(id); if (!el) return;
@@ -719,6 +721,67 @@
   }
 
   // doDeal / doTeams flags drive the three buttons (HubSpot only · Teams only · both).
+  // --- Referral thank-you: auto-email the state's RDM(s) on deal create -------
+  const RDM_OWNERS = { MA: ['75917307', '233781377'], MD: ['82959955', '233781377'], IL: ['81779193', '233781377'] }; // White/Johnson/Lemanski + Colin Fields
+  const RDM_DEFAULT = ['233781377']; // Colin Fields — NVA/NNJ/unknown
+  function leadState() {
+    const mr = dval('d_market_region');
+    if (['BOS', 'MWB', 'NB', 'SB'].includes(mr)) return 'MA';
+    if (['BAL', 'ANN', 'BET'].includes(mr)) return 'MD';
+    if (mr === 'CHI') return 'IL';
+    const st = dval('d_client_state').toUpperCase().trim();
+    if (st === 'MA' || st.startsWith('MASS')) return 'MA';
+    if (st === 'MD' || st.startsWith('MARY')) return 'MD';
+    if (st === 'IL' || st.startsWith('ILL')) return 'IL';
+    return null;
+  }
+  function rdmEmails() { return (RDM_OWNERS[leadState()] || RDM_DEFAULT).map(id => ownerEmailById[id]).filter(Boolean); }
+  function referralPartnerName() {
+    try { if (typeof referralCompany !== 'undefined' && referralCompany && referralCompany.name) return referralCompany.name; } catch (e) {}
+    return dval('d_referred_by');
+  }
+  async function graphSend(toEmails, subject, htmlBody) {
+    const token = await graphToken();
+    const r = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: { subject, body: { contentType: 'HTML', content: htmlBody }, toRecipients: toEmails.map(e => ({ emailAddress: { address: e } })) }, saveToSentItems: true }),
+    });
+    if (!r.ok) { const t = await r.text(); throw new Error('Mail ' + r.status + ' ' + t.slice(0, 120)); }
+  }
+  async function generateReferralThankYou(partner) {
+    const closed = dval('d_stage') === 'closedwon';
+    const locSel = document.getElementById('d_location');
+    const ctx = {
+      client: dval('d_dealname') || [dval('d_client_name'), dval('d_client_last')].filter(Boolean).join(' '),
+      family_member: [dval('d_caller_name'), dval('d_caller_rel')].filter(Boolean).join(' — '),
+      referral_partner: partner, services: dval('d_notes'), schedule: dval('d_schedule'),
+      start_date: dval('d_start_date'), location: (locSel && locSel.selectedOptions[0] && locSel.selectedOptions[0].text) || '',
+    };
+    const sys = 'You draft a referral thank-you email FROM a Tribute Home Care RDM TO a referral partner (a senior-living community contact, care manager, etc.). Follow Tribute\'s SOP: warm, personal, relationship-driven; reference the SPECIFIC client and situation; show appreciation for the referral; state clear ownership of next steps and who is engaging the family; give high-level timing; say how/when you\'ll share updates; warm close. NEVER sound like a template — make it specific to THIS referral. House language: say "visit"/"visits", never "shift". Output ONLY the email body, plain text, ~5-9 sentences, ending with "Best,\\n[Your name]". '
+      + (closed
+        ? 'STAGE = Lead Won: confirm services are secured and care is beginning (reference the start date), thank them, and note a Client Solutions Manager will oversee the plan of care.'
+        : 'STAGE = Qualified (not closed yet): acknowledge the referral, note you are connecting with the family and confirming the care team, set expectations, and that you will follow up with updates.');
+    return (await callClaude(sys, 'Referral details:\n' + JSON.stringify(ctx) + '\n\nWrite the email body.', 600)).trim();
+  }
+  // Returns the recipient list on success, null if there's no referral source to thank.
+  async function sendReferralThankYou() {
+    const partner = referralPartnerName();
+    if (!partner) return null;
+    const emails = rdmEmails();
+    if (!emails.length) throw new Error('could not resolve the RDM email (HubSpot owners not loaded?)');
+    const acct = msalApp && msalApp.getActiveAccount();
+    if (!acct) throw new Error('sign in with Microsoft to auto-send the referral email');
+    const lt = acct.name || acct.username || 'the lead taker';
+    const client = dval('d_dealname') || [dval('d_client_name'), dval('d_client_last')].filter(Boolean).join(' ') || 'a new client';
+    const draft = await generateReferralThankYou(partner);
+    const body = '<p>New referral logged by ' + esc(lt) + ' via the Availability tool.</p>'
+      + '<p><b>Client:</b> ' + esc(client) + '<br><b>Referral partner:</b> ' + esc(partner) + '</p>'
+      + '<p>Suggested thank-you to send to the referral partner — please review &amp; personalize before sending:</p>'
+      + '<hr><div>' + esc(draft).replace(/\n/g, '<br>') + '</div>';
+    await graphSend(emails, 'New referral from ' + partner, body);
+    return emails.join(', ');
+  }
+
   async function submitLead(doDeal, doTeams) {
     const res = document.getElementById('d_result');
     if (doDeal) {
@@ -748,6 +811,8 @@
       }
       res.innerHTML = msg;
       if (dealOk) {
+        try { const sent = await sendReferralThankYou(); if (sent) res.innerHTML += '<div class="ok">✓ Referral thank-you emailed to ' + esc(sent) + ' (from your Outlook).</div>'; }
+        catch (e) { res.innerHTML += '<div class="caveat">Deal created — referral email not sent: ' + esc(e.message) + '</div>'; }
         // Lock the form after a successful create so the same lead can't be submitted twice.
         res.innerHTML += '<div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
           + '<button type="button" class="go" id="d_newlead" style="width:auto;margin:0;padding:10px 18px">＋ Start a new lead</button>'
