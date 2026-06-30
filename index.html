@@ -748,20 +748,25 @@
     });
     if (!r.ok) { const t = await r.text(); throw new Error('Mail ' + r.status + ' ' + t.slice(0, 120)); }
   }
-  async function generateReferralThankYou(partner) {
-    const closed = dval('d_stage') === 'closedwon';
-    const locSel = document.getElementById('d_location');
+  function referralPartnerEmail() {
+    try { if (typeof referralContact !== 'undefined' && referralContact && referralContact.email) return referralContact.email; } catch (e) {}
+    return '';
+  }
+  // Reuse the manual box's referral prompt + context for a consistent Tribute voice. Returns {subject, body}.
+  async function generateReferralThankYou() {
     const ctx = {
-      client: dval('d_dealname') || [dval('d_client_name'), dval('d_client_last')].filter(Boolean).join(' '),
-      family_member: [dval('d_caller_name'), dval('d_caller_rel')].filter(Boolean).join(' — '),
-      referral_partner: partner, services: dval('d_notes'), schedule: dval('d_schedule'),
-      start_date: dval('d_start_date'), location: (locSel && locSel.selectedOptions[0] && locSel.selectedOptions[0].text) || '',
+      referral_source_name: (typeof referralContact !== 'undefined' && referralContact && referralContact.name) || '',
+      referral_company: (typeof referralCompany !== 'undefined' && referralCompany && referralCompany.name) || '',
+      csm_name: msUserName(), deal_stage: dval('d_stage'), client_first_name: dval('d_client_name'),
+      notes: dval('d_notes'), schedule: dval('d_schedule'), expected_start: dval('start_date') || '',
+      sender_first_name: (msUserName().split(' ')[0] || ''),
     };
-    const sys = 'You draft a referral thank-you email FROM a Tribute Home Care RDM TO a referral partner (a senior-living community contact, care manager, etc.). Follow Tribute\'s SOP: warm, personal, relationship-driven; reference the SPECIFIC client and situation; show appreciation for the referral; state clear ownership of next steps and who is engaging the family; give high-level timing; say how/when you\'ll share updates; warm close. NEVER sound like a template — make it specific to THIS referral. House language: say "visit"/"visits", never "shift". Output ONLY the email body, plain text, ~5-9 sentences, ending with "Best,\\n[Your name]". '
-      + (closed
-        ? 'STAGE = Lead Won: confirm services are secured and care is beginning (reference the start date), thank them, and note a Client Solutions Manager will oversee the plan of care.'
-        : 'STAGE = Qualified (not closed yet): acknowledge the referral, note you are connecting with the family and confirming the care team, set expectations, and that you will follow up with updates.');
-    return (await callClaude(sys, 'Referral details:\n' + JSON.stringify(ctx) + '\n\nWrite the email body.', 600)).trim();
+    const r = await fetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1100, system: emailPrompt(), messages: [{ role: 'user', content: JSON.stringify(ctx) }] }) });
+    const j = await r.json();
+    let txt = (j.content && j.content[0] && j.content[0].text) || '';
+    const m = txt.replace(/^```json\s*|\s*```$/g, '').match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : { subject: '', body: txt };
   }
   // Returns the recipient list on success, null if there's no referral source to thank.
   async function sendReferralThankYou() {
@@ -773,11 +778,16 @@
     if (!acct) throw new Error('sign in with Microsoft to auto-send the referral email');
     const lt = acct.name || acct.username || 'the lead taker';
     const client = dval('d_dealname') || [dval('d_client_name'), dval('d_client_last')].filter(Boolean).join(' ') || 'a new client';
-    const draft = await generateReferralThankYou(partner);
-    const body = '<p>New referral logged by ' + esc(lt) + ' via the Availability tool.</p>'
-      + '<p><b>Client:</b> ' + esc(client) + '<br><b>Referral partner:</b> ' + esc(partner) + '</p>'
-      + '<p>Suggested thank-you to send to the referral partner — please review &amp; personalize before sending:</p>'
-      + '<hr><div>' + esc(draft).replace(/\n/g, '<br>') + '</div>';
+    const pEmail = referralPartnerEmail();
+    const d = await generateReferralThankYou();
+    const sendTo = pEmail ? esc(pEmail) : '(referral partner — email not captured; add the recipient)';
+    const subj = d.subject || ('Thank you for the referral — ' + client);
+    const body = '<p>New referral logged by ' + esc(lt) + ' via the Availability tool — a ready-to-send thank-you for the referral partner is below.</p>'
+      + '<table cellpadding="0" cellspacing="0" style="font-size:14px"><tr><td style="padding:2px 14px 2px 0"><b>Client</b></td><td>' + esc(client) + '</td></tr>'
+      + '<tr><td style="padding:2px 14px 2px 0"><b>Send to</b></td><td>' + sendTo + '</td></tr>'
+      + '<tr><td style="padding:2px 14px 2px 0"><b>Suggested subject</b></td><td>' + esc(subj) + '</td></tr></table>'
+      + '<p>Review &amp; personalize, then send to the referral partner:</p>'
+      + '<hr><div>' + esc(d.body || '').replace(/\n/g, '<br>') + '</div>';
     await graphSend(emails, 'New referral from ' + partner, body);
     return emails.join(', ');
   }
