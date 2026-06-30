@@ -365,6 +365,9 @@
         <span class="muted">Total hours/week for irregular schedules — overrides the bracket for the estimate.</span></div>
       <div><label>Estimated amount ($)</label><input type="text" id="d_amount" inputmode="decimal" autocomplete="off" /></div>
       <div><label>Referred by</label><input type="text" id="d_referred_by" autocomplete="off" /></div>
+      <div><label>Result from Availability Tool</label><select id="d_avail_result">
+        <option value="">—</option><option value="Green">Green</option><option value="Yellow (Light Hedge)">Yellow (Light Hedge)</option><option value="Red (Hard Hedge)">Red (Hard Hedge)</option>
+      </select><span class="muted">Auto-set when you run the availability check; override if needed.</span></div>
       <div class="colspan"><label>Schedule requested</label><input type="text" id="d_schedule" autocomplete="off" /></div>
       <div class="colspan"><label>General summary / reason for service</label><textarea id="d_notes"></textarea></div>
       <div class="colspan"><label>Follow-up / scheduling ideas</label><input type="text" id="d_followup" autocomplete="off" /></div>
@@ -659,7 +662,7 @@
       client_phone: dval('d_client_phone'), client_email: dval('d_client_email'),
       client_city: dval('d_client_city'), client_state: dval('d_client_state'),
       client_gender: dval('d_client_gender'), client_dob: dval('d_client_dob'),
-      referred_by_: dval('d_referred_by'),
+      referred_by_: dval('d_referred_by'), result_from_availability_tool_test: dval('d_avail_result'),
       referral_company_id: (referralCompany && referralCompany.id) || '', referral_contact_id: (referralContact && referralContact.id) || '',
       amount: dval('d_amount').replace(/[^0-9.]/g, ''), notes: dval('d_notes'),
       dealtype: dval('d_dealtype'),
@@ -1040,6 +1043,7 @@
       lastResult = d;
       out.innerHTML = render(d);
       wireResult(d);
+      setAvailResult(d);
     } catch (err) {
       out.innerHTML = '<div class="caveat">Request failed: '+esc(err.message)+'</div>';
     } finally {
@@ -1112,6 +1116,16 @@
     if (d.extended_options && d.extended_options.length)
       h += '<div class="foot">Beyond 20mi: '+d.extended_options.map(o=>esc(o.name)+' ('+esc(o.distance_miles)+' mi)').join(', ')+'</div>';
     return h;
+  }
+
+  // Map the availability result to the HubSpot "Result from Availability Tool" picklist.
+  function setAvailResult(d) {
+    const g = d && d.ryg_grid;
+    let v = '';
+    if (g && Array.isArray(g.not_guaranteed)) {
+      v = !g.not_guaranteed.length ? 'Green' : (g.not_guaranteed.some(x => x.color === 'red') ? 'Red (Hard Hedge)' : 'Yellow (Light Hedge)');
+    } else if (d && d.decision) { v = d.decision === 'YES' ? 'Green' : 'Yellow (Light Hedge)'; }
+    if (v) setSelectVal('d_avail_result', v);
   }
 
   function render(d) {
