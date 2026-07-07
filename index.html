@@ -1,6 +1,11 @@
 <!doctype html>
 <html lang="en">
 <head>
+<!-- msal-browser is already loaded later in this page (used for optional
+     Outlook/Teams sign-in, a different app registration) — entra-auth.js
+     only touches `msal` inside a DOMContentLoaded handler, by which point
+     that script tag has already run, so it doesn't need its own copy here. -->
+<script src="./entra-auth.js?v=2026-07-07a"></script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Tribute · Lead Taker Tool</title>
@@ -944,7 +949,9 @@
   }
   document.getElementById('gatego').addEventListener('click', submitGate);
   document.getElementById('gatepw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitGate(); } });
-  if (!getKey()) showGate();
+  // No auto-trigger here anymore — the page itself now requires signing in
+  // with Microsoft before any of this code runs at all (see entra-auth.js).
+  // This legacy password modal stays only as a fallback path.
 
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const state = { coverage:'Days', day_length:'Long', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), gender:'', driver:'', coords:null };
@@ -1035,8 +1042,13 @@
         gender_preference: state.gender || undefined,
         driver_required: state.driver === '1' ? true : undefined,
       };
-      const res = await fetch(VIVPROXY + '?endpoint=availability_qualify&key=' + encodeURIComponent(getKey()), {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+      const token = window.tributeKsfGate && window.tributeKsfGate.getToken ? await window.tributeKsfGate.getToken() : null;
+      const aqHeaders = {'Content-Type':'application/json'};
+      let aqUrl = VIVPROXY + '?endpoint=availability_qualify';
+      if (token) aqHeaders.Authorization = 'Bearer ' + token;
+      else aqUrl += '&key=' + encodeURIComponent(getKey());
+      const res = await fetch(aqUrl, {
+        method:'POST', headers:aqHeaders, body:JSON.stringify(body)
       });
       if (res.status === 401) { clearKey(); showGate('Wrong password — try again.'); out.innerHTML=''; return; }
       const d = await res.json();
