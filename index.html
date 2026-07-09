@@ -472,7 +472,17 @@
   // Hosted backend (Andrew's vivProxy Azure Function).
   const VIVPROXY = 'https://tribute-api-prod-bkc4hfcwf3f2f6bf.centralus-01.azurewebsites.net/api/vivProxy';
   const CLAUDEPROXY = VIVPROXY.replace('/vivProxy', '/claudeProxy');
-  const HS_BASE = VIVPROXY.replace('/vivProxy', ''); // function-app /api base
+  const HS_BASE = VIVPROXY.replace('/vivProxy', '');
+  // 2026-07-09: every endpoint below now requires a real signed-in Tribute
+  // account server-side. Wraps fetch() so every API call carries the token
+  // without hand-editing each call site.
+  async function _authFetch(url, opts) {
+    opts = opts || {};
+    const t = (window.tributeKsfGate && window.tributeKsfGate.getToken) ? await window.tributeKsfGate.getToken() : null;
+    if (t) { opts = Object.assign({}, opts); opts.headers = Object.assign({}, opts.headers || {}, {Authorization: 'Bearer ' + t}); }
+    return fetch(url, opts);
+  }
+ // function-app /api base
   let lastResult = null;
   let referralContact = null;  // chosen referral-source contact (id, name, email)
   let referralCompany = null;  // chosen Associated Company (referral partner)
@@ -494,14 +504,14 @@
     else { el.textContent = 'HubSpot: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect HubSpot'; }
   }
   async function hsWhoami() {
-    try { const r = await fetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId, j.user); } return j; }
+    try { const r = await _authFetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId, j.user); } return j; }
     catch (e) { setHsStatus({ connected: false }); return { connected: false }; }
   }
   let ownerEmailById = {};
   // Populate "Lead taken by" + "Deal owner" live from HubSpot owners (every rep + new hire).
   async function loadOwners(selId, email) {
     try {
-      const r = await fetch(HS_BASE + '/hubspotowners?sid=' + encodeURIComponent(hsSid()));
+      const r = await _authFetch(HS_BASE + '/hubspotowners?sid=' + encodeURIComponent(hsSid()));
       const j = await r.json();
       if (j.owners && j.owners.length) {
         j.owners.forEach(o => { if (o.id) ownerEmailById[String(o.id)] = o.email || ''; });
@@ -530,7 +540,7 @@
     else { el.textContent = 'DocuSign: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect DocuSign'; }
   }
   async function dsWhoami() {
-    try { const r = await fetch(HS_BASE + '/docusignwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setDsStatus(j); return j; }
+    try { const r = await _authFetch(HS_BASE + '/docusignwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setDsStatus(j); return j; }
     catch (e) { setDsStatus({ connected: false }); return { connected: false }; }
   }
   function dsConnect() { window.open(HS_BASE + '/docusignoauthstart?sid=' + encodeURIComponent(hsSid()), 'dsoauth', 'width=640,height=760'); }
@@ -773,7 +783,7 @@
       notes: dval('d_notes'), schedule: dval('d_schedule'), expected_start: dval('start_date') || '',
       sender_first_name: (msUserName().split(' ')[0] || ''),
     };
-    const r = await fetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const r = await _authFetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1100, system: emailPrompt(), messages: [{ role: 'user', content: JSON.stringify(ctx) }] }) });
     const j = await r.json();
     let txt = (j.content && j.content[0] && j.content[0].text) || '';
@@ -816,7 +826,7 @@
       if (doDeal) {
         const who = await hsWhoami();
         if (!who.connected) { res.innerHTML = '<div class="caveat">Connect HubSpot first (top-right), then try again.</div>'; hsConnect(); actionBtns().forEach(b => b.disabled = false); return; }
-        const r = await fetch(HS_BASE + '/hubspotcreatedeal?sid=' + encodeURIComponent(hsSid()), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dealBody()) });
+        const r = await _authFetch(HS_BASE + '/hubspotcreatedeal?sid=' + encodeURIComponent(hsSid()), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dealBody()) });
         const j = await r.json();
         if (j.ok) { dealOk = true; msg += '<div class="ok">✓ Deal created — owned by ' + esc(j.owner || who.user) + '. <a href="' + esc(j.url) + '" target="_blank">Open in HubSpot ↗</a></div>'; }
         else if (j.error === 'not_connected') { res.innerHTML = '<div class="caveat">HubSpot session expired — reconnect (top-right).</div>'; hsConnect(); actionBtns().forEach(b => b.disabled = false); return; }
@@ -925,7 +935,7 @@
     if (!raw) { status.textContent = 'Paste some notes first.'; return; }
     const btn = document.getElementById('d_parse'); btn.disabled = true; const old = btn.textContent; btn.textContent = 'Parsing…'; status.textContent = '';
     try {
-      const r = await fetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, system: parsePrompt(), messages: [{ role: 'user', content: raw }] }) });
+      const r = await _authFetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, system: parsePrompt(), messages: [{ role: 'user', content: raw }] }) });
       const j = await r.json();
       let txt = (j.content && j.content[0] && j.content[0].text) || '';
       txt = txt.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
@@ -1189,7 +1199,7 @@
   }
 
   async function callClaude(system, userText, maxTokens) {
-    const r = await fetch(CLAUDEPROXY, { method:'POST', headers:{'Content-Type':'application/json'},
+    const r = await _authFetch(CLAUDEPROXY, { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: maxTokens||300, system, messages:[{ role:'user', content:userText }] }) });
     if (!r.ok) throw new Error('claude '+r.status);
     const j = await r.json();
@@ -1247,7 +1257,7 @@
       if (q.length < 2) { sug.className = 'suggest hide'; return; }
       referralTimer = setTimeout(async () => {
         try {
-          const r = await fetch(HS_BASE + '/hubspotcontacts?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(q));
+          const r = await _authFetch(HS_BASE + '/hubspotcontacts?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(q));
           const j = await r.json(); const list = j.contacts || [];
           if (j.error === 'not_connected') { sug.innerHTML = '<div style="color:var(--hedge)">Connect HubSpot first</div>'; sug.className = 'suggest'; return; }
           if (!list.length) { sug.innerHTML = '<div style="color:var(--hint)">No matches</div>'; sug.className = 'suggest'; return; }
@@ -1277,7 +1287,7 @@
       if (q.length < 2) { sug.className = 'suggest hide'; return; }
       t = setTimeout(async () => {
         try {
-          const r = await fetch(HS_BASE + '/hubspotcompanies?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(q));
+          const r = await _authFetch(HS_BASE + '/hubspotcompanies?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(q));
           const j = await r.json(); const list = j.companies || [];
           if (j.error === 'not_connected') { sug.innerHTML = '<div style="color:var(--hedge)">Connect HubSpot first</div>'; sug.className = 'suggest'; return; }
           if (!list.length) { sug.innerHTML = '<div style="color:var(--hint)">No Company record — leave blank or use “Referred by”</div>'; sug.className = 'suggest'; return; }
@@ -1305,7 +1315,7 @@
     const cq = clean(companyName);
     if (cq) {
       try {
-        const list = ((await (await fetch(HS_BASE + '/hubspotcompanies?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(cq))).json()).companies) || [];
+        const list = ((await (await _authFetch(HS_BASE + '/hubspotcompanies?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(cq))).json()).companies) || [];
         const inp = document.getElementById('d_company_search'), picked = document.getElementById('d_company_picked');
         const best = list.find(c => strong(c.name, cq));
         if (best) {
@@ -1318,7 +1328,7 @@
     const kq = clean(contactName);
     if (kq) {
       try {
-        const list = ((await (await fetch(HS_BASE + '/hubspotcontacts?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(kq))).json()).contacts) || [];
+        const list = ((await (await _authFetch(HS_BASE + '/hubspotcontacts?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(kq))).json()).contacts) || [];
         const inp = document.getElementById('d_referral_search'), picked = document.getElementById('d_referral_picked');
         const best = list.find(c => strong(c.name, kq));
         if (best) {
@@ -1371,7 +1381,7 @@
       ? { caller_name: dval('d_caller_name'), client_first_name: dval('d_client_name'), notes: dval('d_notes'), schedule: dval('d_schedule'), expected_start: dval('start_date') || '', sender_first_name: (msUserName().split(' ')[0] || '') }
       : { referral_source_name: (referralContact && referralContact.name) || '', referral_company: (referralCompany && referralCompany.name) || '', csm_name: msUserName(), deal_stage: dval('d_stage'), client_first_name: dval('d_client_name'), notes: dval('d_notes'), schedule: dval('d_schedule'), expected_start: dval('start_date') || '', sender_first_name: (msUserName().split(' ')[0] || '') };
     try {
-      const r = await fetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const r = await _authFetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1100, system: sys, messages: [{ role: 'user', content: JSON.stringify(ctx) }] }) });
       const j = await r.json();
       let txt = (j.content && j.content[0] && j.content[0].text) || j.completion || '';
@@ -1584,7 +1594,7 @@
       pf['ClientName']=clientName;   // client name is now a prefill field, filled from the tool
       $('ldGen').textContent='Generating…';
       try{
-        const r=await fetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
+        const r=await _authFetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({dealId:d.id, template:t, clientName, clientEmail, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:false})});
         const j=await r.json().catch(()=>({}));
         if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML='Connect DocuSign (top-right) first.'; dsConnect(); return; }
@@ -1597,7 +1607,7 @@
       $('ldDetail').classList.add('hide'); $('ldQueue').classList.remove('hide');
       $('ldList').innerHTML='<div class="muted" style="padding:12px">Loading qualified leads…</div>'; $('ldCount').textContent='';
       try{
-        const r=await fetch(HS_BASE+'/csaqueue?sid='+encodeURIComponent(hsSid()));
+        const r=await _authFetch(HS_BASE+'/csaqueue?sid='+encodeURIComponent(hsSid()));
         if(r.status===401){ $('ldList').innerHTML='<div class="ldnote">Connect HubSpot (top-right) to load qualified leads.</div>'; return; }
         const j=await r.json(); if(j.deals) DEALS=j.deals;
       }catch(e){ $('ldList').innerHTML='<div class="ldnote">Could not load leads: '+e.message+'</div>'; return; }
