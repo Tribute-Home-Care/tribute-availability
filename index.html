@@ -1453,17 +1453,17 @@
     function fmtDate(s){ if(!s) return ''; const dt=new Date(s.length<=10?s+'T00:00:00':s); return isNaN(dt)?s:dt.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}); }
     function defSubject(d){ const nm=(d.clientName||d.name||'').trim().split(/\s+/); const fi=nm[0]?nm[0][0]+'. ':''; const last=nm.length>1?nm[nm.length-1]:(nm[0]||''); return (fi+last).trim()+' – Tribute Home Care Client Service Agreement'; }
     function defBody(d, dateStr){ const ph=PHONE[d.market]||''; const on=dateStr?(' on '+fmtDate(dateStr)):''; return "Thank you for trusting Tribute with your loved one's care. Please review, sign, and return the attached form prior to the start of care"+on+". If you have any questions or concerns, please do not hesitate to reach out to us"+(ph?(' at '+ph):'')+"."; }
-    const RATECARD = {
-      "Chicago CSA June 2026":{tiers:[[1,3,62],[4,99,41]],livein:570},
-      "Massachusetts CSA BOS and MWB April 2026":{tiers:[[0,3.99,65],[4,24,47]],livein:610},
-      "Massachusetts CSA North of Boston April 2026":{tiers:[[0,3.99,65],[4,24,45]],livein:610},
-      "South of Boston CSA April 2026":{tiers:[[0,3.99,55],[4,24,44.5]],livein:585},
-      "Maryland CSA November 2025":{tiers:[[1,3,55],[4,11,39],[12,24,37]],livein:550},
-      "Maryland CSA (Edenwald) March 2026":{tiers:[[1,3,55],[4,11,37],[12,24,35]],livein:550},
-      "Maryland CSA April 2026 No Financials":{tiers:[[1,3,55],[4,11,39],[12,24,37]],livein:550},
-      "Cape Live-In Special Rate":{tiers:[[1,3,50],[4,11,43],[12,24,43]],livein:585},
-      "General Credit Card Page (All of Tribute)":{tiers:[],livein:0},
-    };
+    // Per-market hourly rate card used to be hardcoded here — downloadable
+    // via view-source regardless of this page's Entra sign-in gate. Now
+    // fetched from a real gated endpoint at load; by the time a user has
+    // typed anything into the form, this has long since resolved.
+    let RATECARD = {};
+    (async function loadRateCard(){
+      try{
+        const r = await _authFetch(VIVPROXY+'?endpoint=availability_ratecard');
+        if(r.ok) RATECARD = await r.json();
+      }catch(e){ console.warn('Rate card fetch failed:', e.message); }
+    })();
     const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
     const $ = id => document.getElementById(id);
     let cur = 0, parsed = null, listenerAttached = false;
