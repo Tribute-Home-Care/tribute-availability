@@ -504,21 +504,25 @@
     else { el.textContent = 'HubSpot: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect HubSpot'; }
   }
   async function hsWhoami() {
-    try { const r = await _authFetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId); } return j; }
+    try { const r = await _authFetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId, j.user); } return j; }
     catch (e) { setHsStatus({ connected: false }); return { connected: false }; }
   }
   let ownerEmailById = {};
   // Populate "Lead taken by" + "Deal owner" live from HubSpot owners (every rep + new hire).
-  async function loadOwners(selId) {
+  async function loadOwners(selId, email) {
     try {
       const r = await _authFetch(HS_BASE + '/hubspotowners?sid=' + encodeURIComponent(hsSid()));
       const j = await r.json();
       if (j.owners && j.owners.length) {
         j.owners.forEach(o => { if (o.id) ownerEmailById[String(o.id)] = o.email || ''; });
+        // Default Lead taken by + Deal owner to the connected rep — fall back to matching
+        // their email against the owner list if the owner id didn't resolve at connect time.
+        let sel = selId;
+        if (!sel && email) { const m = j.owners.find(o => (o.email || '').toLowerCase() === String(email).toLowerCase()); if (m) sel = String(m.id); }
         const opts = '<option value="">—</option>' + j.owners.map(o => '<option value="' + o.id + '">' + o.name.replace(/</g, '&lt;') + '</option>').join('');
         ['d_lead_taken_by', 'd_deal_owner'].forEach(id => {
           const el = document.getElementById(id); if (!el) return;
-          const keep = selId || el.value;
+          const keep = sel || el.value;
           el.innerHTML = opts;
           if (keep) el.value = String(keep);
         });
@@ -903,6 +907,7 @@
     const um = document.getElementById('d_unmapped');
     if (um) um.innerHTML = (p.unmapped && p.unmapped.length) ? '⚠ Not auto-filled — handle manually: ' + p.unmapped.map(esc).join(' · ') : '';
     autoFillAmount();
+    autoMatchReferral(f.referral_company || f.referred_by_, f.referral_contact);
   }
 
   // Auto-estimate the weekly amount from market + per-visit hours (× days/week), via the Lead Desk rate card.
@@ -920,7 +925,7 @@
     const iso = now.toISOString().slice(0, 10);
     return 'You parse a home-care lead-taker\'s free-text notes into (1) an availability-check intake, (2) a HubSpot deal, and (3) a Teams post for Tribute Home Care. Return ONLY valid JSON (no prose, no markdown fences): {"dealname":str,"teams_subject":str,"teams_summary":str,"availability":{...},"fields":{...},"unmapped":[str]}.\n'
       + 'availability (omit if unknown): coverage [Days, Overnights, 24/7, Live-in] (24/7 = around-the-clock TEAM with awake overnight shifts, NOT live-in; only pick Live-in if the caller explicitly says "live-in"); day_length [Long, Short] (Short=under ~5h/visit); recurrence [weekly, specific]; days_of_week array ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address (>=town + state; infer from venue); start_date YYYY-MM-DD; gender_preference [male, female] (omit if either); driver_required [true] (ONLY if the caller explicitly needs a caregiver who can drive/transport the client); restrictions array subset of [dog, cat, smoking] — include "dog" if there is a dog/dogs in the home, "cat" if a cat, "smoking" if anyone smokes.\n'
-      + 'fields (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender [Female, Male], client_dob; location_of_care [Private Home, Residence (non Brightview), Residence (Brightview)] (Private Home=house/apartment; Brightview=a Brightview community; non Brightview=other senior community — street address goes in availability.address NOT here); service_level [A,B,C,D,Live-In] (WEEKLY hours A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); IMPORTANT: "24/7"/around-the-clock is NOT live-in — for 24/7 set coverage=24/7, service_level=A, hours_of_service_a_day=5 (or 4 if split into 12h visits); ONLY set coverage=Live-in, service_level=Live-In, or hours_of_service_a_day=Live-in when the caller EXPLICITLY says "live-in" (one caregiver living in the home); schedule_requested; referred_by_; amount (number); lead_source [Assisted Living, Geriatric Care Manager (GCM), Home Health Care, Hospice, Hospital, Independent Living, Physician, Skilled Nursing Facility / Rehab, Tribute Employee, Tribute Client, Website, Unknown, Professional (non-medical)]; market_region [BOS, MWB, NB, SB, BAL, ANN, BET, NVA, CHI, NNJ] (Boston=BOS, MetroWest=MWB, North-of-Boston=NB, South-of-Boston=SB, Baltimore=BAL, Annapolis=ANN, Bethesda=BET, Chicago=CHI); dealtype [newbusiness, existingbusiness] (default newbusiness); home_environment array subset of [Cats in Home, Dogs in Home, No Pets in Home, Smokers in Home, Non-Smokers in Home, Parking Available, No Parking Available]; tone_of_call [Calm, Stressed, Skeptical, Rushed]; was_referral_source_thanked_ ["true","false"]; how_to_charge; caregiver_match; notes = GENERAL SUMMARY: a brief, scannable list of the services/care needed plus quick facts, e.g. "~1hr morning visits, 7 days/wk; BP checks, med reminders, laundry" — keep it short; details_about_client__personality__interests__behaviors__social_history = a SEPARATE, fuller narrative about the client and their situation, personality, history and needs — do NOT repeat the notes text; description (short deal description); scheduling_follow_up; client_solutions_followup = next steps ONLY if explicitly stated in the notes (e.g. "call back by 4pm") — otherwise OMIT it entirely, never invent a next step.\n'
+      + 'fields (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender [Female, Male], client_dob; location_of_care [Private Home, Residence (non Brightview), Residence (Brightview)] (Private Home=house/apartment; Brightview=a Brightview community; non Brightview=other senior community — street address goes in availability.address NOT here); service_level [A,B,C,D,Live-In] (WEEKLY hours A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); IMPORTANT: "24/7"/around-the-clock is NOT live-in — for 24/7 set coverage=24/7, service_level=A, hours_of_service_a_day=5 (or 4 if split into 12h visits); ONLY set coverage=Live-in, service_level=Live-In, or hours_of_service_a_day=Live-in when the caller EXPLICITLY says "live-in" (one caregiver living in the home); schedule_requested; referred_by_ (referral source as free text); referral_company (the referring ORGANIZATION / community / agency name ONLY, e.g. "Care Dimensions" or "The Newbury" — drop parenthetical notes like "(hospice)"); referral_contact (the individual who made the referral, if a specific person is named in the notes, else omit); amount (number); lead_source [Assisted Living, Geriatric Care Manager (GCM), Home Health Care, Hospice, Hospital, Independent Living, Physician, Skilled Nursing Facility / Rehab, Tribute Employee, Tribute Client, Website, Unknown, Professional (non-medical)]; market_region [BOS, MWB, NB, SB, BAL, ANN, BET, NVA, CHI, NNJ] (Boston=BOS, MetroWest=MWB, North-of-Boston=NB, South-of-Boston=SB, Baltimore=BAL, Annapolis=ANN, Bethesda=BET, Chicago=CHI); dealtype [newbusiness, existingbusiness] (default newbusiness); home_environment array subset of [Cats in Home, Dogs in Home, No Pets in Home, Smokers in Home, Non-Smokers in Home, Parking Available, No Parking Available]; tone_of_call [Calm, Stressed, Skeptical, Rushed]; was_referral_source_thanked_ ["true","false"]; how_to_charge; caregiver_match; notes = GENERAL SUMMARY: a brief, scannable list of the services/care needed plus quick facts, e.g. "~1hr morning visits, 7 days/wk; BP checks, med reminders, laundry" — keep it short; details_about_client__personality__interests__behaviors__social_history = a SEPARATE, fuller narrative about the client and their situation, personality, history and needs — do NOT repeat the notes text; description (short deal description); scheduling_follow_up; client_solutions_followup = next steps ONLY if explicitly stated in the notes (e.g. "call back by 4pm") — otherwise OMIT it entirely, never invent a next step.\n'
       + 'teams_subject: short subject line e.g. "LEAD — <community/town> (<client name(s)>)". teams_summary: 3-5 line plain-text Teams post; say "visit", never "shift". unmapped: anything important not fitting a field (e.g. "1.5-person rate", deadlines). Resolve relative dates; today is ' + wd + ' ' + iso + '.';
   }
 
@@ -1298,6 +1303,41 @@
       }, 280);
     });
     document.addEventListener('click', (e) => { if (!inp.contains(e.target) && !sug.contains(e.target)) sug.className = 'suggest hide'; });
+  }
+
+  // Auto-match the parsed referral to actual HubSpot Company/Contact records so the
+  // association isn't missed (a spot lead-takers routinely skip on manual entry). A
+  // confident name match auto-selects (flagged "verify"); otherwise it primes the search box.
+  async function autoMatchReferral(companyName, contactName) {
+    const clean = s => String(s || '').replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+    const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const strong = (a, b) => { a = norm(a); b = norm(b); return a && b && (a === b || (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a)))); };
+    const cq = clean(companyName);
+    if (cq) {
+      try {
+        const list = ((await (await _authFetch(HS_BASE + '/hubspotcompanies?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(cq))).json()).companies) || [];
+        const inp = document.getElementById('d_company_search'), picked = document.getElementById('d_company_picked');
+        const best = list.find(c => strong(c.name, cq));
+        if (best) {
+          referralCompany = best;
+          if (inp) inp.value = best.name;
+          if (picked) picked.innerHTML = '✓ Auto-matched Company <b>' + esc(best.name) + '</b>' + (best.place ? ' · ' + esc(best.place) : '') + ' <span style="color:var(--hedge)">— verify</span>';
+        } else if (inp && !inp.value) { inp.value = cq; inp.dispatchEvent(new Event('input')); }
+      } catch (e) {}
+    }
+    const kq = clean(contactName);
+    if (kq) {
+      try {
+        const list = ((await (await _authFetch(HS_BASE + '/hubspotcontacts?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(kq))).json()).contacts) || [];
+        const inp = document.getElementById('d_referral_search'), picked = document.getElementById('d_referral_picked');
+        const best = list.find(c => strong(c.name, kq));
+        if (best) {
+          referralContact = best;
+          if (inp) inp.value = best.name;
+          if (picked) picked.innerHTML = '✓ Auto-matched <b>' + esc(best.name) + '</b>' + (best.email ? ' · ' + esc(best.email) : '') + ' <span style="color:var(--hedge)">— verify</span>';
+        } else if (inp && !inp.value) { inp.value = kq; inp.dispatchEvent(new Event('input')); }
+      } catch (e) {}
+    }
   }
 
   // --- Follow-up email: AI draft (Tribute voice) + send from the rep's Outlook -
