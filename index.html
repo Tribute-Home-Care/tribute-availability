@@ -38,8 +38,9 @@
   header .dot { width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,var(--brand),var(--brand-d)); display:grid; place-items:center; color:#fff; font-weight:700; flex-shrink:0; }
   header h1 { font-size:16px; font-weight:700; letter-spacing:-0.02em; margin:0; color:var(--ink); }
   .hsbar { margin-left:auto; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .hsbar span { font-size:12px; font-weight:500; color:var(--muted); }
-  .hsbar span.hs-on { color:var(--yes); }
+  .hsbar span { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700; padding:5px 11px; border-radius:999px; border:1.5px solid transparent; }
+  .hsbar span.hs-on { color:var(--yes); background:var(--yes-bg); border-color:var(--yes-line); }
+  .hsbar span.hs-off { color:var(--danger); background:var(--danger-bg); border-color:var(--danger-line); }
   .hsbar button { font-size:12px; font-weight:500; padding:5px 12px; border-radius:8px; border:1.5px solid var(--line); background:#fff; color:var(--muted); cursor:pointer; }
   .hsbar button:hover { border-color:var(--brand); color:var(--brand); background:var(--brand-bg); }
 
@@ -229,9 +230,9 @@
 <div class="wrap">
   <header><div class="dot">T</div><h1>Lead Taker Tool</h1>
     <div class="hsbar">
-      <span id="msStatus" class="hs-off">Microsoft: not signed in</span><button type="button" id="msSignin" class="hsbtn msbtn">Sign in with Microsoft</button>
-      <span id="hsStatus" class="hs-off">HubSpot: not connected</span><button type="button" id="hsConnect" class="hsbtn">Connect HubSpot</button>
-      <span id="dsStatus" class="hs-off">DocuSign: not connected</span><button type="button" id="dsConnect" class="hsbtn">Connect DocuSign</button>
+      <span id="msStatus" class="hs-off">⚠ Microsoft — not signed in</span><button type="button" id="msSignin" class="hsbtn msbtn">Sign in with Microsoft</button>
+      <span id="hsStatus" class="hs-off">⚠ HubSpot — not connected</span><button type="button" id="hsConnect" class="hsbtn">Connect HubSpot</button>
+      <span id="dsStatus" class="hs-off">⚠ DocuSign — not connected</span><button type="button" id="dsConnect" class="hsbtn">Connect DocuSign</button>
     </div>
   </header>
   <nav class="tabs">
@@ -500,8 +501,8 @@
   function setHsStatus(j) {
     const el = document.getElementById('hsStatus'), btn = document.getElementById('hsConnect');
     if (!el) return;
-    if (j && j.connected) { el.textContent = 'HubSpot: ' + (j.user || 'connected'); el.className = 'hs-on'; if (btn) btn.textContent = 'Reconnect'; }
-    else { el.textContent = 'HubSpot: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect HubSpot'; }
+    if (j && j.connected) { el.className = 'hs-on'; el.innerHTML = '✓ HubSpot' + (j.user ? ' · ' + esc(j.user) : ''); el.title = 'Connected: ' + (j.user || ''); if (btn) btn.textContent = 'Reconnect'; }
+    else { el.className = 'hs-off'; el.innerHTML = '⚠ HubSpot — not connected'; el.title = ''; if (btn) btn.textContent = 'Connect HubSpot'; }
   }
   async function hsWhoami() {
     try { const r = await _authFetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId, j.user); } return j; }
@@ -536,8 +537,8 @@
   function setDsStatus(j) {
     const el = document.getElementById('dsStatus'), btn = document.getElementById('dsConnect');
     if (!el) return;
-    if (j && j.connected) { el.textContent = 'DocuSign: ' + (j.user || 'connected'); el.className = 'hs-on'; if (btn) btn.textContent = 'Reconnect DocuSign'; }
-    else { el.textContent = 'DocuSign: not connected'; el.className = 'hs-off'; if (btn) btn.textContent = 'Connect DocuSign'; }
+    if (j && j.connected) { el.className = 'hs-on'; el.innerHTML = '✓ DocuSign' + (j.user ? ' · ' + esc(j.user) : ''); el.title = 'Connected: ' + (j.user || ''); if (btn) btn.textContent = 'Reconnect DocuSign'; }
+    else { el.className = 'hs-off'; el.innerHTML = '⚠ DocuSign — not connected'; el.title = ''; if (btn) btn.textContent = 'Connect DocuSign'; }
   }
   async function dsWhoami() {
     try { const r = await _authFetch(HS_BASE + '/docusignwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setDsStatus(j); return j; }
@@ -561,8 +562,8 @@
   function setMsStatus(acct) {
     const el = document.getElementById('msStatus'), btn = document.getElementById('msSignin');
     if (!el) return;
-    if (acct) { el.textContent = 'Microsoft: ' + (acct.username || acct.name || 'signed in'); el.className = 'hs-on'; if (btn) btn.textContent = 'Switch account'; }
-    else { el.textContent = 'Microsoft: not signed in'; el.className = 'hs-off'; if (btn) btn.textContent = 'Sign in with Microsoft'; }
+    if (acct) { el.className = 'hs-on'; el.innerHTML = '✓ Microsoft' + ((acct.name || acct.username) ? ' · ' + esc(acct.name || acct.username) : ''); el.title = 'Signed in: ' + (acct.username || acct.name || ''); if (btn) btn.textContent = 'Switch account'; }
+    else { el.className = 'hs-off'; el.innerHTML = '⚠ Microsoft — not signed in'; el.title = ''; if (btn) btn.textContent = 'Sign in with Microsoft'; }
   }
   async function initMsal() {
     if (!window.msal) { setMsStatus(null); return; }
