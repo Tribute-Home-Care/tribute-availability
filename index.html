@@ -899,6 +899,7 @@
     setInputVal('d_notes', f.notes); setInputVal('d_followup', f.scheduling_follow_up);
     setInputVal('d_dealname', p.dealname); setInputVal('d_teams', p.teams_summary); setInputVal('d_teams_subject', p.teams_subject);
     setSelectVal('d_lead_source', f.lead_source); setSelectVal('d_market_region', f.market_region); setSelectVal('d_dealtype', f.dealtype);
+    { const dm = deriveMarket(f.client_city, f.client_state); if (dm) setSelectVal('d_market_region', dm); } // town-level override beats the AI guess
     setSelectVal('d_tone', f.tone_of_call); setSelectVal('d_thanked', f.was_referral_source_thanked_); setSelectVal('d_policies', f.holiday_and_24_hour_cancellation_policies_reviewed);
     setInputVal('d_start_date', a.start_date); setInputVal('d_how_to_charge', f.how_to_charge); setInputVal('d_caregiver_match', f.caregiver_match);
     setInputVal('d_thank_plan', f.if_referral_source_was_not_thanked__what_is_the_plan_); setInputVal('d_next_steps', f.client_solutions_followup);
@@ -909,6 +910,28 @@
     if (um) um.innerHTML = (p.unmapped && p.unmapped.length) ? '⚠ Not auto-filled — handle manually: ' + p.unmapped.map(esc).join(' · ') : '';
     autoFillAmount();
     autoMatchReferral(f.referral_company || f.referred_by_, f.referral_contact);
+  }
+
+  // Deterministic market from client town — authoritative Marketing "MA Service Area - Town List" (2026-07-02).
+  // Beats the AI's geographic guess (e.g. Westwood reads as "south of Boston" but is a Boston-market town).
+  const MA_TOWN_MARKET = (() => {
+    const G = {
+      BOS: 'Arlington,Belmont,Boston,Brookline,Cambridge,Canton,Chelsea,Dedham,Everett,Lexington,Malden,Medford,Melrose,Newton,Norwood,Revere,Somerville,Stoneham,Waltham,Watertown,Westwood,Winchester,Winthrop',
+      MWB: 'Acton,Ashland,Auburn,Bellingham,Berlin,Bolton,Boxborough,Boylston,Carlisle,Concord,Dover,Framingham,Franklin,Grafton,Harvard,Holliston,Hopkinton,Hudson,Lincoln,Littleton,Marlborough,Maynard,Medfield,Medway,Milford,Millbury,Millis,Natick,Needham,Norfolk,Northborough,Northbridge,Sherborn,Shrewsbury,Southborough,Stow,Sudbury,Sutton,Upton,Wayland,Wellesley,West Boylston,Westborough,Westford,Weston,Worcester',
+      NB: 'Amesbury,Andover,Bedford,Beverly,Billerica,Boxford,Burlington,Chelmsford,Danvers,Dracut,Essex,Georgetown,Gloucester,Groveland,Hamilton,Haverhill,Ipswich,Lawrence,Lowell,Lynn,Lynnfield,Manchester-by-the-Sea,Marblehead,Merrimac,Methuen,Middleton,Nahant,Newbury,Newburyport,North Andover,North Reading,Peabody,Reading,Rockport,Rowley,Salem,Salisbury,Saugus,Swampscott,Tewksbury,Topsfield,Tyngsborough,Wakefield,Wenham,West Newbury,Wilmington,Woburn',
+      SB: 'Abington,Acushnet,Attleboro,Avon,Berkley,Braintree,Bridgewater,Brockton,Carver,Cohasset,Dartmouth,Dighton,Duxbury,East Bridgewater,Easton,Foxborough,Freetown,Halifax,Hanover,Hanson,Hingham,Holbrook,Hull,Kingston,Lakeville,Mansfield,Marion,Marshfield,Mattapoisett,Middleborough,Milton,Norton,Norwell,Pembroke,Plymouth,Plympton,Quincy,Randolph,Raynham,Rehoboth,Rockland,Scituate,Sharon,Somerset,Stoughton,Taunton,Walpole,West Bridgewater,Westport,Weymouth,Whitman,Wrentham',
+    };
+    const m = {};
+    Object.keys(G).forEach(k => G[k].split(',').forEach(t => { m[t.toLowerCase().replace(/[^a-z0-9]/g, '')] = k; }));
+    return m;
+  })();
+  function deriveMarket(city, stateAbbr) {
+    const st = String(stateAbbr || '').trim().toLowerCase();
+    if (st === 'il' || st === 'illinois') return 'CHI';
+    const c = String(city || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!c) return '';
+    if ((!st || st === 'ma' || st === 'massachusetts') && MA_TOWN_MARKET[c]) return MA_TOWN_MARKET[c];
+    return '';
   }
 
   // Auto-estimate the weekly amount from market + per-visit hours (× days/week), via the Lead Desk rate card.
