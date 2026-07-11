@@ -562,7 +562,7 @@
   function setMsStatus(acct) {
     const el = document.getElementById('msStatus'), btn = document.getElementById('msSignin');
     if (!el) return;
-    if (acct) { el.className = 'hs-on'; el.innerHTML = '✓ Microsoft' + ((acct.name || acct.username) ? ' · ' + esc(acct.name || acct.username) : ''); el.title = 'Signed in: ' + (acct.username || acct.name || ''); if (btn) btn.textContent = 'Switch account'; }
+    if (acct) { el.className = 'hs-on'; el.innerHTML = '✓ Microsoft' + ((acct.name || acct.username) ? ' · ' + esc(acct.name || acct.username) : ''); el.title = 'Signed in: ' + (acct.username || acct.name || ''); if (btn) btn.textContent = 'Reconnect'; }
     else { el.className = 'hs-off'; el.innerHTML = '⚠ Microsoft — not signed in'; el.title = ''; if (btn) btn.textContent = 'Sign in with Microsoft'; }
   }
   async function initMsal() {
