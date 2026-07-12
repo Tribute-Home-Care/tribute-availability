@@ -240,6 +240,7 @@
   ::-webkit-scrollbar-thumb:hover { background:#9CA3AF; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 </head>
 <body>
 <div id="gate" class="gate hide">
@@ -279,6 +280,15 @@
     <div class="connhint" id="connHint">Connect all three above to continue.</div>
   </div>
 </div>
+<div id="qrModal" class="gate hide">
+  <div class="gatecard" style="width:340px">
+    <div class="gatetitle">Add a photo from your phone</div>
+    <p class="gatesub">Scan with your phone camera, then take a photo of your notes — it'll appear here automatically.</p>
+    <div id="qrBox" style="display:grid;place-items:center;padding:6px 0 4px"></div>
+    <div id="qrStatus" class="muted" style="font-size:12.5px;margin-top:4px">Waiting for your phone…</div>
+    <button id="qrCancel" type="button" style="background:#fff;color:var(--muted);border:1.5px solid var(--line)">Cancel</button>
+  </div>
+</div>
 <div class="wrap">
   <header><div class="dot">T</div><h1>Lead Taker Tool</h1>
     <div class="hsbar">
@@ -303,6 +313,7 @@
       <button type="button" class="go" id="d_parse" style="width:auto;margin-top:0;padding:11px 22px">✨ Parse with AI</button>
       <button type="button" class="attachbtn" id="d_cam_btn" style="display:none">📷 Take photo</button>
       <button type="button" class="attachbtn" id="d_attach_btn">📎 Attach photo of notes</button>
+      <button type="button" class="attachbtn" id="d_phone_btn">📱 Use my phone</button>
       <input type="file" id="d_cam_input" accept="image/*" capture="environment" style="display:none" />
       <input type="file" id="d_attach_input" accept="image/*" multiple style="display:none" />
       <span id="d_parse_status" class="muted"></span>
@@ -1564,13 +1575,45 @@
   document.getElementById('d_attach_input').onchange = (e) => { addNoteFiles(e.target.files); e.target.value = ''; };
   document.getElementById('d_cam_btn').onclick = () => document.getElementById('d_cam_input').click();
   document.getElementById('d_cam_input').onchange = (e) => { addNoteFiles(e.target.files); e.target.value = ''; };
-  // "Take photo" opens the camera directly — only meaningful on phones/tablets, so show it there.
-  if (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) document.getElementById('d_cam_btn').style.display = '';
+  // On phones/tablets show "Take photo" (direct camera); on computers show "Use my phone" (QR handoff).
+  if (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) { document.getElementById('d_cam_btn').style.display = ''; document.getElementById('d_phone_btn').style.display = 'none'; }
   document.getElementById('d_notes_raw').addEventListener('paste', (e) => {
     const items = (e.clipboardData && e.clipboardData.items) || [];
     const imgs = []; for (const it of items) { if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) imgs.push(f); } }
     if (imgs.length) { e.preventDefault(); addNoteFiles(imgs); }
   });
+
+  // Phone → desktop photo handoff via QR + a short-lived relay token.
+  let qrPoll = null, qrToken = null;
+  function randToken(){ try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) {} return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+  function addNoteImageData(imgs){ (imgs || []).forEach(im => { if (im && im.data && im.media_type) noteImages.push({ media_type: im.media_type, data: im.data, url: 'data:' + im.media_type + ';base64,' + im.data, name: 'phone photo' }); }); renderNoteImages(); }
+  function openPhoneUpload(){
+    qrToken = randToken();
+    const url = 'https://tribute-home-care.github.io/tribute-availability/upload.html?token=' + qrToken;
+    const box = document.getElementById('qrBox');
+    try { const qr = qrcode(0, 'M'); qr.addData(url); qr.make(); box.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 2, scalable: true }); const svg = box.querySelector('svg'); if (svg) { svg.style.width = '190px'; svg.style.height = '190px'; } }
+    catch (e) { box.innerHTML = '<a href="' + url + '" target="_blank" rel="noopener">Open the upload page</a>'; }
+    document.getElementById('qrStatus').textContent = 'Waiting for your phone…';
+    document.getElementById('qrModal').classList.remove('hide');
+    if (qrPoll) clearInterval(qrPoll);
+    qrPoll = setInterval(pollPhoneUpload, 2000);
+  }
+  async function pollPhoneUpload(){
+    if (!qrToken) return;
+    try {
+      const r = await fetch(HS_BASE + '/noterelay?token=' + encodeURIComponent(qrToken));
+      const j = await r.json();
+      if (j && j.ready && j.images && j.images.length) {
+        addNoteImageData(j.images);
+        document.getElementById('qrStatus').textContent = '✓ ' + j.images.length + ' photo' + (j.images.length > 1 ? 's' : '') + ' added.';
+        if (qrPoll) { clearInterval(qrPoll); qrPoll = null; }
+        setTimeout(closePhoneUpload, 1300);
+      }
+    } catch (e) {}
+  }
+  function closePhoneUpload(){ if (qrPoll) { clearInterval(qrPoll); qrPoll = null; } qrToken = null; document.getElementById('qrModal').classList.add('hide'); }
+  document.getElementById('d_phone_btn').onclick = openPhoneUpload;
+  document.getElementById('qrCancel').onclick = closePhoneUpload;
   document.getElementById('d_create_deal').onclick = () => submitLead(true, false);
   document.getElementById('d_post_teams').onclick = () => submitLead(false, true);
   document.getElementById('d_create_both').onclick = () => submitLead(true, true);

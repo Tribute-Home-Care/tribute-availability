@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Add a photo of your notes · Tribute</title>
+<style>
+  :root { --brand:#EA580C; --brand-d:#C2410C; --brand-bg:#FFF7ED; --ink:#111827; --muted:#6B7280; --line:#E5E7EB; --yes:#0F6E56; --yes-bg:#E1F5EE; --yes-line:#A7E0CD; --danger:#B91C1C; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:#F8FAFC; color:var(--ink); min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:24px 18px calc(24px + env(safe-area-inset-bottom)); }
+  .dot { width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--brand),var(--brand-d));display:grid;place-items:center;color:#fff;font-weight:800;font-size:20px;margin-bottom:14px; }
+  h1 { font-size:19px; margin:0 0 4px; text-align:center; }
+  p.sub { color:var(--muted); font-size:13.5px; margin:0 0 20px; text-align:center; max-width:420px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px; width:100%; max-width:460px; box-shadow:0 8px 30px rgba(15,23,42,.06); }
+  button { width:100%; padding:15px; border:0; border-radius:12px; font-weight:800; font-size:16px; cursor:pointer; margin-top:12px; }
+  .primary { background:var(--brand); color:#fff; }
+  .primary:disabled { background:#E5E7EB; color:var(--muted); }
+  .ghost { background:#fff; color:var(--ink); border:1.5px solid var(--line); font-weight:700; }
+  input[type=file] { display:none; }
+  #thumbs { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .thumb { position:relative; }
+  .thumb img { width:74px; height:74px; object-fit:cover; border-radius:10px; border:1.5px solid var(--line); display:block; }
+  .thumb button { position:absolute; top:-8px; right:-8px; width:24px; height:24px; padding:0; margin:0; border-radius:50%; border:2px solid #fff; background:var(--danger); color:#fff; font-size:15px; line-height:1; display:grid; place-items:center; }
+  #status { text-align:center; font-size:13.5px; margin-top:14px; min-height:18px; color:var(--muted); }
+  .done { background:var(--yes-bg); border:1px solid var(--yes-line); color:var(--yes); border-radius:14px; padding:22px; text-align:center; font-weight:700; }
+  .done .big { font-size:34px; margin-bottom:6px; }
+</style>
+</head>
+<body>
+  <div class="dot">T</div>
+  <h1>Add a photo of your notes</h1>
+  <p class="sub">Take a clear photo of your handwritten notes and send it to the Lead Taker Tool on your computer.</p>
+
+  <div class="card" id="card">
+    <button class="primary" id="camBtn">📷 Take a photo</button>
+    <button class="ghost" id="libBtn">🖼️ Choose from library</button>
+    <input type="file" id="camIn" accept="image/*" capture="environment" />
+    <input type="file" id="libIn" accept="image/*" multiple />
+    <div id="thumbs"></div>
+    <button class="primary" id="sendBtn" disabled style="margin-top:16px">Send to computer</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="card done" id="doneCard" style="display:none">
+    <div class="big">✓</div>
+    Sent! Head back to your computer — the photo will appear in the tool.
+    <button class="ghost" id="moreBtn" style="margin-top:16px">Send another photo</button>
+  </div>
+
+<script>
+  var RELAY = 'https://tribute-api-prod-bkc4hfcwf3f2f6bf.centralus-01.azurewebsites.net/api/noterelay';
+  var token = (new URLSearchParams(location.search)).get('token') || '';
+  var images = [];
+  var $ = function(id){ return document.getElementById(id); };
+
+  if (!token) { $('card').innerHTML = '<div style="text-align:center;color:#B91C1C;font-weight:700">This link is missing its code.<br><span style="font-weight:400;color:#6B7280;font-size:13px">Scan the QR code on your computer again.</span></div>'; }
+
+  function fileToImage(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(){
+        var img = new Image();
+        img.onload = function(){
+          var MAX = 1568, w = img.width, h = img.height;
+          if (w > MAX || h > MAX){ var s = MAX / Math.max(w, h); w = Math.round(w*s); h = Math.round(h*s); }
+          var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+          cv.getContext('2d').drawImage(img, 0, 0, w, h);
+          var durl = cv.toDataURL('image/jpeg', 0.85);
+          resolve({ media_type:'image/jpeg', data: durl.split(',')[1], url: durl });
+        };
+        img.onerror = function(){ reject(new Error('unreadable')); };
+        img.src = reader.result;
+      };
+      reader.onerror = function(){ reject(new Error('unreadable')); };
+      reader.readAsDataURL(file);
+    });
+  }
+  function render(){
+    var t = $('thumbs'); t.innerHTML = '';
+    images.forEach(function(a, i){
+      var d = document.createElement('div'); d.className = 'thumb';
+      d.innerHTML = '<img src="'+a.url+'" alt=""><button type="button" data-i="'+i+'">×</button>';
+      t.appendChild(d);
+    });
+    Array.prototype.forEach.call(t.querySelectorAll('button[data-i]'), function(b){ b.onclick = function(){ images.splice(+b.dataset.i, 1); render(); }; });
+    $('sendBtn').disabled = images.length === 0;
+  }
+  function add(files){
+    var arr = Array.prototype.slice.call(files || []);
+    var done = 0;
+    if (!arr.length) return;
+    $('status').textContent = 'Processing…';
+    arr.forEach(function(f){
+      if (!f.type || f.type.indexOf('image/') !== 0){ done++; return; }
+      fileToImage(f).then(function(im){ images.push(im); render(); }).catch(function(){ $('status').textContent = 'Couldn’t read that photo — try again.'; }).then(function(){ done++; if (done === arr.length) $('status').textContent = ''; });
+    });
+  }
+  $('camBtn').onclick = function(){ $('camIn').click(); };
+  $('libBtn').onclick = function(){ $('libIn').click(); };
+  $('camIn').onchange = function(e){ add(e.target.files); e.target.value = ''; };
+  $('libIn').onchange = function(e){ add(e.target.files); e.target.value = ''; };
+
+  $('sendBtn').onclick = function(){
+    if (!images.length || !token) return;
+    $('sendBtn').disabled = true; $('sendBtn').textContent = 'Sending…'; $('status').textContent = '';
+    fetch(RELAY + '?token=' + encodeURIComponent(token), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ images: images.map(function(a){ return { media_type:a.media_type, data:a.data }; }) })
+    }).then(function(r){ return r.json().then(function(j){ return { ok:r.ok, j:j }; }); })
+      .then(function(res){
+        if (res.ok){ $('card').style.display = 'none'; $('doneCard').style.display = ''; }
+        else { $('status').textContent = 'Send failed' + (res.j && res.j.error ? ' (' + res.j.error + ')' : '') + ' — try again.'; $('sendBtn').disabled = false; $('sendBtn').textContent = 'Send to computer'; }
+      })
+      .catch(function(){ $('status').textContent = 'Send failed — check your connection and try again.'; $('sendBtn').disabled = false; $('sendBtn').textContent = 'Send to computer'; });
+  };
+  $('moreBtn').onclick = function(){ images = []; render(); $('doneCard').style.display = 'none'; $('card').style.display = ''; $('sendBtn').textContent = 'Send to computer'; };
+</script>
+</body>
+</html>
