@@ -172,6 +172,25 @@
   .gatesub { color:var(--muted); font-size:13px; margin:6px 0 14px; }
   .gatecard button { margin-top:12px; width:100%; padding:11px; border:0; border-radius:10px; background:var(--brand); color:#fff; font-weight:700; cursor:pointer; }
   .gateerr { color:var(--danger); font-size:12px; margin-top:8px; min-height:14px; }
+  /* ---- connection landing gate ---- */
+  .conncard { background:#fff; border-radius:18px; padding:30px 28px 26px; width:440px; max-width:92vw; box-shadow:var(--shadow-lg); }
+  .conncard .dot { width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand-d));display:grid;place-items:center;color:#fff;font-weight:800;margin:0 auto 12px;font-size:18px; }
+  .conncard h2 { margin:0; font-size:20px; font-weight:800; text-align:center; }
+  .conncard .csub { color:var(--muted); font-size:13px; text-align:center; margin:6px 0 20px; }
+  .connrow { display:flex; align-items:center; gap:13px; padding:12px 14px; border:1.5px solid var(--line); border-radius:12px; margin-bottom:10px; transition:border-color .15s, background .15s; }
+  .connrow.on { border-color:var(--yes-line); background:var(--yes-bg); }
+  .connlogo { width:30px; height:30px; flex:none; display:grid; place-items:center; }
+  .connlogo img { width:26px; height:26px; }
+  .conninfo { flex:1; min-width:0; }
+  .connname { font-weight:700; font-size:14px; }
+  .connsub { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .connrow.on .connsub { color:var(--yes); font-weight:600; }
+  .conncheck { color:var(--yes); font-size:20px; font-weight:800; flex:none; }
+  .connbtn { flex:none; font-size:13px; font-weight:600; padding:7px 15px; border-radius:9px; border:1.5px solid var(--brand); background:var(--brand); color:#fff; cursor:pointer; }
+  .connbtn:hover { background:var(--brand-d); border-color:var(--brand-d); }
+  .enterbtn { width:100%; margin-top:14px; padding:13px; border:0; border-radius:11px; background:var(--brand); color:#fff; font-weight:800; font-size:15px; cursor:pointer; }
+  .enterbtn:disabled { background:#E5E7EB; color:var(--muted); cursor:not-allowed; }
+  .connhint { text-align:center; color:var(--muted); font-size:11.5px; margin-top:10px; min-height:14px; }
 
   #d_result { margin-top:14px; } #d_result a { color:var(--brand-d); font-weight:600; }
 
@@ -225,6 +244,33 @@
     <input type="password" id="gatepw" placeholder="Team password" autocomplete="current-password" />
     <button id="gatego" type="button">Enter</button>
     <div id="gateerr" class="gateerr"></div>
+  </div>
+</div>
+<div id="connGate" class="gate">
+  <div class="conncard">
+    <div class="dot">T</div>
+    <h2>Let's get you connected</h2>
+    <p class="csub">Connect all three to start taking leads.</p>
+    <div class="connrow" id="cr_ms">
+      <span class="connlogo"><svg viewBox="0 0 24 24" width="26" height="26" role="img" aria-label="Microsoft"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="13" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="13" width="10" height="10" fill="#00A4EF"/><rect x="13" y="13" width="10" height="10" fill="#FFB900"/></svg></span>
+      <div class="conninfo"><div class="connname">Microsoft</div><div class="connsub" id="cr_ms_sub">Checking…</div></div>
+      <span class="conncheck" id="cr_ms_check" style="display:none">✓</span>
+      <button class="connbtn" id="cr_ms_btn" type="button">Connect</button>
+    </div>
+    <div class="connrow" id="cr_hs">
+      <span class="connlogo"><img src="https://cdn.simpleicons.org/hubspot/FF7A59" alt="HubSpot" onerror="this.style.display='none'"></span>
+      <div class="conninfo"><div class="connname">HubSpot</div><div class="connsub" id="cr_hs_sub">Checking…</div></div>
+      <span class="conncheck" id="cr_hs_check" style="display:none">✓</span>
+      <button class="connbtn" id="cr_hs_btn" type="button">Connect</button>
+    </div>
+    <div class="connrow" id="cr_ds">
+      <span class="connlogo"><img src="https://cdn.simpleicons.org/docusign/CB9B2D" alt="DocuSign" onerror="this.style.display='none'"></span>
+      <div class="conninfo"><div class="connname">DocuSign</div><div class="connsub" id="cr_ds_sub">Checking…</div></div>
+      <span class="conncheck" id="cr_ds_check" style="display:none">✓</span>
+      <button class="connbtn" id="cr_ds_btn" type="button">Connect</button>
+    </div>
+    <button id="connEnter" class="enterbtn" type="button" disabled>Enter the tool →</button>
+    <div class="connhint" id="connHint">Connect all three above to continue.</div>
   </div>
 </div>
 <div class="wrap">
@@ -503,6 +549,7 @@
     if (!el) return;
     if (j && j.connected) { el.className = 'hs-on'; el.innerHTML = '✓ HubSpot' + (j.user ? ' · ' + esc(j.user) : ''); el.title = 'Connected: ' + (j.user || ''); if (btn) btn.textContent = 'Reconnect'; }
     else { el.className = 'hs-off'; el.innerHTML = '⚠ HubSpot — not connected'; el.title = ''; if (btn) btn.textContent = 'Connect HubSpot'; }
+    if (typeof refreshConnGate === 'function') refreshConnGate();
   }
   async function hsWhoami() {
     try { const r = await _authFetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId, j.user); } return j; }
@@ -539,6 +586,7 @@
     if (!el) return;
     if (j && j.connected) { el.className = 'hs-on'; el.innerHTML = '✓ DocuSign' + (j.user ? ' · ' + esc(j.user) : ''); el.title = 'Connected: ' + (j.user || ''); if (btn) btn.textContent = 'Reconnect DocuSign'; }
     else { el.className = 'hs-off'; el.innerHTML = '⚠ DocuSign — not connected'; el.title = ''; if (btn) btn.textContent = 'Connect DocuSign'; }
+    if (typeof refreshConnGate === 'function') refreshConnGate();
   }
   async function dsWhoami() {
     try { const r = await _authFetch(HS_BASE + '/docusignwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setDsStatus(j); return j; }
@@ -564,6 +612,7 @@
     if (!el) return;
     if (acct) { el.className = 'hs-on'; el.innerHTML = '✓ Microsoft' + ((acct.name || acct.username) ? ' · ' + esc(acct.name || acct.username) : ''); el.title = 'Signed in: ' + (acct.username || acct.name || ''); if (btn) btn.textContent = 'Reconnect'; }
     else { el.className = 'hs-off'; el.innerHTML = '⚠ Microsoft — not signed in'; el.title = ''; if (btn) btn.textContent = 'Sign in with Microsoft'; }
+    if (typeof refreshConnGate === 'function') refreshConnGate();
   }
   async function initMsal() {
     if (!window.msal) { setMsStatus(null); return; }
@@ -993,6 +1042,30 @@
   // No auto-trigger here anymore — the page itself now requires signing in
   // with Microsoft before any of this code runs at all (see entra-auth.js).
   // This legacy password modal stays only as a fallback path.
+
+  // ===== Connection landing gate (Microsoft + HubSpot + DocuSign all required) =====
+  function connName(id){ const t=(document.getElementById(id)||{}).title||''; const nm=t.replace(/^(Connected|Signed in):\s*/,'').trim(); return nm ? ('Connected — '+nm) : 'Connected'; }
+  function refreshConnGate(){
+    const cg=document.getElementById('connGate'); if(!cg) return;
+    let all=true;
+    [['ms','msStatus'],['hs','hsStatus'],['ds','dsStatus']].forEach(([k,sid])=>{
+      const pill=document.getElementById(sid); const on=!!(pill && pill.classList.contains('hs-on'));
+      if(!on) all=false;
+      const row=document.getElementById('cr_'+k), chk=document.getElementById('cr_'+k+'_check'), btn=document.getElementById('cr_'+k+'_btn'), sub=document.getElementById('cr_'+k+'_sub');
+      if(row) row.classList.toggle('on',on);
+      if(chk) chk.style.display=on?'':'none';
+      if(btn) btn.style.display=on?'none':'';
+      if(sub) sub.textContent=on?connName(sid):'Not connected';
+    });
+    const enter=document.getElementById('connEnter'); if(enter) enter.disabled=!all;
+    const hint=document.getElementById('connHint'); if(hint) hint.textContent=all?"All set — you're good to go.":'Connect all three above to continue.';
+  }
+  (function wireConnGate(){
+    const b=(id,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener('click',fn); };
+    b('cr_ms_btn', msSignIn); b('cr_hs_btn', hsConnect); b('cr_ds_btn', dsConnect);
+    b('connEnter', ()=>{ const cg=document.getElementById('connGate'); if(cg) cg.classList.add('hide'); });
+    refreshConnGate();
+  })();
 
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const state = { coverage:'Days', day_length:'Long', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), gender:'', driver:'', coords:null };
