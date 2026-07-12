@@ -1239,6 +1239,8 @@
         restrictions: [...state.restrictions],
         gender_preference: state.gender || undefined,
         driver_required: state.driver === '1' ? true : undefined,
+        // Client's market (town-derived) so open-demand netting scopes to their market.
+        market: (document.getElementById('d_market_region') && document.getElementById('d_market_region').value) || undefined,
       };
       const token = window.tributeKsfGate && window.tributeKsfGate.getToken ? await window.tributeKsfGate.getToken() : null;
       const aqHeaders = {'Content-Type':'application/json'};
