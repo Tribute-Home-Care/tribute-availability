@@ -191,6 +191,12 @@
   .enterbtn { width:100%; margin-top:14px; padding:13px; border:0; border-radius:11px; background:var(--brand); color:#fff; font-weight:800; font-size:15px; cursor:pointer; }
   .enterbtn:disabled { background:#E5E7EB; color:var(--muted); cursor:not-allowed; }
   .connhint { text-align:center; color:var(--muted); font-size:11.5px; margin-top:10px; min-height:14px; }
+  /* ---- attach photo of notes ---- */
+  .attachbtn { font-size:13px; font-weight:600; padding:11px 16px; border-radius:9px; border:1.5px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; }
+  .attachbtn:hover { border-color:var(--brand); color:var(--brand); background:var(--brand-bg); }
+  .attachthumb { position:relative; display:inline-block; }
+  .attachthumb img { width:58px; height:58px; object-fit:cover; border-radius:9px; border:1.5px solid var(--line); display:block; }
+  .attachthumb button { position:absolute; top:-7px; right:-7px; width:20px; height:20px; border-radius:50%; border:1.5px solid #fff; background:var(--danger); color:#fff; font-size:13px; line-height:1; cursor:pointer; display:grid; place-items:center; padding:0; }
 
   #d_result { margin-top:14px; } #d_result a { color:var(--brand-d); font-weight:600; }
 
@@ -295,8 +301,14 @@
     <textarea id="d_notes_raw" style="min-height:120px" placeholder="Type or paste everything the caller told you — who called, who needs care, where, what schedule, when to start, referral source…"></textarea>
     <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <button type="button" class="go" id="d_parse" style="width:auto;margin-top:0;padding:11px 22px">✨ Parse with AI</button>
+      <button type="button" class="attachbtn" id="d_cam_btn" style="display:none">📷 Take photo</button>
+      <button type="button" class="attachbtn" id="d_attach_btn">📎 Attach photo of notes</button>
+      <input type="file" id="d_cam_input" accept="image/*" capture="environment" style="display:none" />
+      <input type="file" id="d_attach_input" accept="image/*" multiple style="display:none" />
       <span id="d_parse_status" class="muted"></span>
     </div>
+    <div class="sub2" style="margin-top:6px">Handwritten notes? Snap a photo (or paste a screenshot into the box) and Claude will read them too.</div>
+    <div id="d_attach_list" style="margin-top:8px;display:flex;gap:9px;flex-wrap:wrap"></div>
     <div id="d_unmapped" class="muted" style="margin-top:10px"></div>
   </div>
 
@@ -1004,13 +1016,50 @@
       + 'teams_subject: short subject line e.g. "LEAD — <community/town> (<client name(s)>)". teams_summary: 3-5 line plain-text Teams post; say "visit", never "shift". unmapped: anything important not fitting a field (e.g. "1.5-person rate", deadlines). Resolve relative dates; today is ' + wd + ' ' + iso + '.';
   }
 
+  // Photos of handwritten notes attached to the parse step — downscaled client-side
+  // and sent to Claude (vision) as image blocks alongside any typed notes.
+  let noteImages = [];
+  function renderNoteImages(){
+    const list = document.getElementById('d_attach_list'); if (!list) return;
+    list.innerHTML = '';
+    noteImages.forEach((a, i) => { const chip = document.createElement('span'); chip.className = 'attachthumb'; chip.innerHTML = '<img src="' + a.url + '" alt="attached notes">' + '<button type="button" title="Remove" data-i="' + i + '">×</button>'; list.appendChild(chip); });
+    list.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { noteImages.splice(+b.dataset.i, 1); renderNoteImages(); });
+  }
+  function fileToNoteImage(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => { const img = new Image(); img.onload = () => {
+          const MAX = 1568; let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+          const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h);
+          const durl = cv.toDataURL('image/jpeg', 0.85);
+          resolve({ media_type: 'image/jpeg', data: durl.split(',')[1], url: durl, name: file.name });
+        }; img.onerror = () => reject(new Error('unreadable')); img.src = reader.result; };
+      reader.onerror = () => reject(new Error('unreadable'));
+      reader.readAsDataURL(file);
+    });
+  }
+  async function addNoteFiles(files){
+    const status = document.getElementById('d_parse_status');
+    for (const f of Array.from(files || [])) {
+      if (!f.type || !f.type.startsWith('image/')) { status.textContent = 'Only photos/images can be attached.'; continue; }
+      try { noteImages.push(await fileToNoteImage(f)); status.textContent = ''; }
+      catch (e) { status.textContent = 'Couldn’t read ' + (f.name || 'that image') + ' — try a JPG or PNG photo.'; }
+    }
+    renderNoteImages();
+  }
   async function parseNotes() {
     const raw = dval('d_notes_raw');
     const status = document.getElementById('d_parse_status');
-    if (!raw) { status.textContent = 'Paste some notes first.'; return; }
+    if (!raw && !noteImages.length) { status.textContent = 'Paste some notes or attach a photo first.'; return; }
     const btn = document.getElementById('d_parse'); btn.disabled = true; const old = btn.textContent; btn.textContent = 'Parsing…'; status.textContent = '';
     try {
-      const r = await _authFetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, system: parsePrompt(), messages: [{ role: 'user', content: raw }] }) });
+      let userContent = raw;
+      if (noteImages.length) {
+        userContent = [{ type: 'text', text: raw || 'Read the attached photo(s) of handwritten call notes and extract the fields.' }];
+        noteImages.forEach(a => userContent.push({ type: 'image', source: { type: 'base64', media_type: a.media_type, data: a.data } }));
+      }
+      const r = await _authFetch(CLAUDEPROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, system: parsePrompt(), messages: [{ role: 'user', content: userContent }] }) });
       const j = await r.json();
       let txt = (j.content && j.content[0] && j.content[0].text) || '';
       txt = txt.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
@@ -1510,6 +1559,18 @@
   document.getElementById('msSignin').onclick = msSignIn;
   document.getElementById('d_team').onchange = (e) => loadChannels(e.target.value);
   document.getElementById('d_parse').onclick = parseNotes;
+  // Attach / camera / paste photos of handwritten notes into the parse step.
+  document.getElementById('d_attach_btn').onclick = () => document.getElementById('d_attach_input').click();
+  document.getElementById('d_attach_input').onchange = (e) => { addNoteFiles(e.target.files); e.target.value = ''; };
+  document.getElementById('d_cam_btn').onclick = () => document.getElementById('d_cam_input').click();
+  document.getElementById('d_cam_input').onchange = (e) => { addNoteFiles(e.target.files); e.target.value = ''; };
+  // "Take photo" opens the camera directly — only meaningful on phones/tablets, so show it there.
+  if (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) document.getElementById('d_cam_btn').style.display = '';
+  document.getElementById('d_notes_raw').addEventListener('paste', (e) => {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    const imgs = []; for (const it of items) { if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) imgs.push(f); } }
+    if (imgs.length) { e.preventDefault(); addNoteFiles(imgs); }
+  });
   document.getElementById('d_create_deal').onclick = () => submitLead(true, false);
   document.getElementById('d_post_teams').onclick = () => submitLead(false, true);
   document.getElementById('d_create_both').onclick = () => submitLead(true, true);
