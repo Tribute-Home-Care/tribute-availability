@@ -467,8 +467,10 @@
       <div><label>Lead source</label><select id="d_lead_source"></select></div>
       <div><label>Market / region</label><select id="d_market_region"></select></div>
       <div><label>Deal type</label><select id="d_dealtype"><option value="newbusiness" selected>New Business</option><option value="existingbusiness">Existing Business</option></select></div>
-      <div><label>Lead taken by <span style="color:#B91C1C">*</span></label><select id="d_lead_taken_by"></select></div>
-      <div><label>Deal owner <span style="color:#B91C1C">*</span></label><select id="d_deal_owner"></select>
+      <div><label>Lead taken by <span style="color:#B91C1C">*</span></label>
+        <div class="ac"><input type="text" id="d_lead_taken_by_q" autocomplete="off" placeholder="Search rep…" /><input type="hidden" id="d_lead_taken_by" /><div class="suggest hide" id="d_lead_taken_by_dd"></div></div></div>
+      <div><label>Deal owner <span style="color:#B91C1C">*</span></label>
+        <div class="ac"><input type="text" id="d_deal_owner_q" autocomplete="off" placeholder="Search rep…" /><input type="hidden" id="d_deal_owner" /><div class="suggest hide" id="d_deal_owner_dd"></div></div>
         <span class="muted">Defaults to you. Set to the lead's <b>region rep</b> when covering after-hours or another region — otherwise their team can't see it.</span></div>
       <div><label>Referral source thanked?</label><select id="d_thanked"><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select></div>
       <div><label>If not thanked — the plan</label><input type="text" id="d_thank_plan" autocomplete="off" /></div>
@@ -599,7 +601,7 @@
     if (typeof refreshConnGate === 'function') refreshConnGate();
   }
   async function hsWhoami() {
-    try { const r = await _authFetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setSelectVal('d_lead_taken_by', String(j.ownerId)); setSelectVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId, j.user); } return j; }
+    try { const r = await _authFetch(HS_BASE + '/hubspotwhoami?sid=' + encodeURIComponent(hsSid())); const j = await r.json(); setHsStatus(j); if (j && j.connected) { if (j.ownerId) { setOwnerVal('d_lead_taken_by', String(j.ownerId)); setOwnerVal('d_deal_owner', String(j.ownerId)); } loadOwners(j.ownerId, j.user); } return j; }
     catch (e) { setHsStatus({ connected: false }); return { connected: false }; }
   }
   let ownerEmailById = {};
@@ -610,16 +612,14 @@
       const j = await r.json();
       if (j.owners && j.owners.length) {
         j.owners.forEach(o => { if (o.id) ownerEmailById[String(o.id)] = o.email || ''; });
+        OWNERS = j.owners.filter(o => o.id && o.name).map(o => ({ id: String(o.id), name: o.name }));
         // Default Lead taken by + Deal owner to the connected rep — fall back to matching
         // their email against the owner list if the owner id didn't resolve at connect time.
         let sel = selId;
         if (!sel && email) { const m = j.owners.find(o => (o.email || '').toLowerCase() === String(email).toLowerCase()); if (m) sel = String(m.id); }
-        const opts = '<option value="">—</option>' + j.owners.map(o => '<option value="' + o.id + '">' + o.name.replace(/</g, '&lt;') + '</option>').join('');
         ['d_lead_taken_by', 'd_deal_owner'].forEach(id => {
-          const el = document.getElementById(id); if (!el) return;
-          const keep = sel || el.value;
-          el.innerHTML = opts;
-          if (keep) el.value = String(keep);
+          const keep = sel || document.getElementById(id).value;   // preserve any prior pick
+          if (keep) setOwnerVal(id, keep);
         });
       }
     } catch (e) {}
@@ -737,12 +737,42 @@
   const UTF = ['Cannot serve location, in service area', 'Limited weekend availability', 'Limited overnight availability', 'Limited daytime availability', 'No live-in caregivers available', 'Requires a male', 'Pets in home', 'Special caregiver skill needed', 'Other'];
   const optList = (arr) => '<option value="">—</option>' + arr.map(s => '<option>' + esc(s) + '</option>').join('');
 
+  // ---- searchable owner comboboxes (Lead taken by / Deal owner) -------------
+  // Live owner list from HubSpot (loadOwners), seeded from LEAD_TAKERS as fallback.
+  // The visible `<id>_q` input is the typeahead; the hidden `<id>` holds the owner
+  // id that dval()/dealBody() read — so nothing downstream changes.
+  let OWNERS = [];
+  const ownerList = () => OWNERS.length ? OWNERS : LEAD_TAKERS.map(o => ({ id: String(o[0]), name: o[1] }));
+  function setOwnerVal(baseId, ownerId) {
+    const hid = document.getElementById(baseId), q = document.getElementById(baseId + '_q');
+    if (!hid || !q) return;
+    if (ownerId == null || ownerId === '') { hid.value = ''; q.value = ''; return; }
+    const o = ownerList().find(x => String(x.id) === String(ownerId));
+    hid.value = String(ownerId);
+    if (o) q.value = o.name;
+  }
+  function initOwnerCombo(baseId) {
+    const q = document.getElementById(baseId + '_q'), hid = document.getElementById(baseId), dd = document.getElementById(baseId + '_dd');
+    if (!q || !hid || !dd) return;
+    const render = (term) => {
+      const t = (term || '').toLowerCase();
+      const list = ownerList().filter(o => o.name.toLowerCase().includes(t)).slice(0, 60);
+      dd.innerHTML = list.length ? list.map(o => '<div data-id="' + o.id + '">' + esc(o.name) + '</div>').join('')
+        : '<div style="color:var(--muted);cursor:default">No match</div>';
+      dd.classList.remove('hide');
+      dd.querySelectorAll('div[data-id]').forEach(el => el.onmousedown = (e) => {
+        e.preventDefault(); hid.value = el.dataset.id; q.value = el.textContent; dd.classList.add('hide'); q.style.borderColor = '';
+      });
+    };
+    q.oninput = () => { hid.value = ''; render(q.value); };
+    q.onfocus = () => render(q.value);
+    q.onblur = () => setTimeout(() => dd.classList.add('hide'), 150);
+  }
+
   function initDealSelects() {
     const ls = document.getElementById('d_lead_source'); if (ls) ls.innerHTML = optList(LEAD_SOURCES);
     const mr = document.getElementById('d_market_region'); if (mr) mr.innerHTML = optList(MARKET_REGIONS);
-    const ownerOpts = '<option value="">—</option>' + LEAD_TAKERS.map(o => '<option value="' + o[0] + '">' + esc(o[1]) + '</option>').join('');
-    const lt = document.getElementById('d_lead_taken_by'); if (lt) lt.innerHTML = ownerOpts;
-    const do_ = document.getElementById('d_deal_owner'); if (do_) do_.innerHTML = ownerOpts;
+    initOwnerCombo('d_lead_taken_by'); initOwnerCombo('d_deal_owner');
     const he = document.getElementById('d_home_env');
     if (he) { he.innerHTML = HOME_ENV.map(s => '<span class="chip" data-v="' + esc(s) + '">' + esc(s) + '</span>').join(''); he.querySelectorAll('.chip').forEach(c => c.onclick = () => c.classList.toggle('on')); }
   }
@@ -762,6 +792,13 @@
     box.innerHTML = h ? '<div class="fieldsub">Outcome detail</div><div class="dealgrid">' + h + '</div>' : '';
   }
 
+  // Each deal stage belongs to a specific pipeline. HubSpot will misplace (or coerce)
+  // a deal if you send a stage that isn't in the pipeline it's created in, so we send
+  // both — coupled here. "Unable to Fill" lives in the Returning-Client-UTF pipeline;
+  // everything else is the default Sales Pipeline.
+  const STAGE_PIPELINE = { qualifiedtobuy: 'default', contractsent: 'default', closedwon: 'default', closedlost: 'default', '3665246': 'default', '12704675': 'default', '143971688': '75251493' };
+  const pipelineForStage = s => STAGE_PIPELINE[s] || 'default';
+
   function dealBody() {
     const addr = document.getElementById('client_address').value;
     return {
@@ -769,7 +806,7 @@
       start_date: dval('d_start_date') || document.getElementById('start_date').value,
       schedule_requested: dval('d_schedule') || scheduleRequestedText(),
       location_of_care: dval('d_location'), client_address: addr,
-      dealstage: dval('d_stage'),
+      dealstage: dval('d_stage'), pipeline: pipelineForStage(dval('d_stage')),
       scheduling_follow_up: dval('d_followup'),
       service_level: dval('d_service_level'), hours_of_service_a_day: dval('d_hours'),
       caller_name: dval('d_caller_name'), caller_phone: dval('d_caller_phone'), caller_email: dval('d_caller_email'),
@@ -820,14 +857,17 @@
     const missing = [];
     REQUIRED.forEach(([id, label]) => {
       const el = document.getElementById(id); const v = el ? (el.value || '').trim() : '';
-      if (!v) { missing.push(label); if (el) el.style.borderColor = '#B91C1C'; }
-      else if (el) { el.style.borderColor = ''; }
+      // owner comboboxes are hidden inputs — highlight their visible search box instead
+      const vis = document.getElementById(id + '_q') || el;
+      if (!v) { missing.push(label); if (vis) vis.style.borderColor = '#B91C1C'; }
+      else if (vis) { vis.style.borderColor = ''; }
     });
     return missing;
   }
   function resetLeadForm() {
     const card = document.getElementById('dealCard');
     card.querySelectorAll('input[type=text],input[type=date],textarea').forEach(el => { el.value = ''; el.style.borderColor = ''; });
+    ['d_lead_taken_by', 'd_deal_owner'].forEach(id => setOwnerVal(id, ''));   // clear hidden owner ids too
     card.querySelectorAll('select').forEach(el => { el.value = (el.id === 'd_dealtype') ? 'newbusiness' : (el.id === 'd_stage') ? 'qualifiedtobuy' : ''; });
     document.getElementById('d_notes_raw').value = '';
     referralCompany = null; referralContact = null;
