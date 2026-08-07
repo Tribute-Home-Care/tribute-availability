@@ -446,6 +446,8 @@
         <option value="">—</option><option value="Private Home">Private Home</option><option value="Residence (non Brightview)">Residence (Community at Large)</option><option value="Residence (Brightview)">Brightview</option>
       </select></div>
       <div><label>Start Date of Service</label><input type="date" id="d_start_date" /></div>
+      <div><label>Visits per week</label><input type="text" id="d_visits_per_week" inputmode="numeric" autocomplete="off" placeholder="e.g. 1" />
+        <span class="muted">How many visits/week — drives the estimate (1×/week short-hour ≈ one visit, not 7).</span></div>
       <div><label>Weekly hours (if custom)</label><input type="text" id="d_weekly_hours" inputmode="decimal" autocomplete="off" placeholder="e.g. 30" />
         <span class="muted">Total hours/week for irregular schedules — overrides the bracket for the estimate.</span></div>
       <div><label>Estimated amount ($)</label><input type="text" id="d_amount" inputmode="decimal" autocomplete="off" />
@@ -483,8 +485,7 @@
     <div class="dealgrid">
       <div class="colspan"><label>General summary / reason for service</label><textarea id="d_notes"></textarea></div>
       <div class="colspan"><label>Details about client (personality, interests, history)</label><textarea id="d_client_details"></textarea></div>
-      <div><label>Follow-up / scheduling ideas</label><input type="text" id="d_followup" autocomplete="off" /></div>
-      <div><label>Next steps</label><input type="text" id="d_next_steps" autocomplete="off" /></div>
+      <div class="colspan"><label>Next steps</label><input type="text" id="d_next_steps" autocomplete="off" /></div>
       <div><label>How to charge</label><input type="text" id="d_how_to_charge" autocomplete="off" /></div>
       <div><label>Tone of call</label><select id="d_tone"><option value="">—</option><option>Calm</option><option>Stressed</option><option>Skeptical</option><option>Rushed</option></select></div>
       <div><label>Holiday / 24-hr cancellation policies reviewed?</label><select id="d_policies"><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select></div>
@@ -494,11 +495,12 @@
 
     <div class="fieldsub">Rarely used — optional</div>
     <details style="margin-top:-2px">
-      <summary style="cursor:pointer;color:var(--muted);font-size:12.5px;margin:0 0 12px;list-style:none;-webkit-user-select:none;user-select:none">▸ Show seldom-filled fields (deal type, DOB, caregiver match, availability result, description)</summary>
+      <summary style="cursor:pointer;color:var(--muted);font-size:12.5px;margin:0 0 12px;list-style:none;-webkit-user-select:none;user-select:none">▸ Show seldom-filled fields (deal type, DOB, caregiver match, availability result, scheduling ideas, description)</summary>
       <div class="dealgrid">
         <div><label>Deal type</label><select id="d_dealtype"><option value="newbusiness" selected>New Business</option><option value="existingbusiness">Existing Business</option></select></div>
         <div><label>Date of birth</label><input type="date" id="d_client_dob" /></div>
         <div><label>Caregiver match</label><input type="text" id="d_caregiver_match" autocomplete="off" /></div>
+        <div><label>Follow-up / scheduling ideas</label><input type="text" id="d_followup" autocomplete="off" /></div>
         <div><label>Result from Availability Tool</label><select id="d_avail_result">
           <option value="">—</option><option value="Green">Green</option><option value="Yellow (Light Hedge)">Yellow (Light Hedge)</option><option value="Red (Hard Hedge)">Red (Hard Hedge)</option>
         </select><span class="muted">Auto-set when you run the availability check.</span></div>
@@ -1056,6 +1058,8 @@
     if (Array.isArray(a.restrictions)) { state.restrictions = new Set(a.restrictions); document.querySelectorAll('#checks .chip').forEach(c => c.classList.toggle('on', state.restrictions.has(c.dataset.v))); }
     const um = document.getElementById('d_unmapped');
     if (um) um.innerHTML = (p.unmapped && p.unmapped.length) ? '⚠ Not auto-filled — handle manually: ' + p.unmapped.map(esc).join(' · ') : '';
+    // Default Visits per week from the parsed schedule (weekly = 7, specific = # of days) — editable.
+    { const vp = document.getElementById('d_visits_per_week'); const v = (state.recurrence === 'weekly') ? 7 : (state.days && state.days.size ? state.days.size : 0); if (vp) vp.value = v ? String(v) : ''; }
     autoFillAmount(f.referral_company || f.referred_by_);
     autoMatchReferral(f.referral_company || f.referred_by_, f.referral_contact);
   }
@@ -1089,21 +1093,24 @@
   const basisEl = () => document.getElementById('d_amount_basis');
   // Auto-estimate the weekly amount from market + per-visit hours (× days/week), via the Lead Desk rate card.
   function autoFillAmount(refHint) {
-    if (amountManual) { const b = basisEl(); if (b) b.textContent = 'Manual amount — kept as entered (won’t be auto-recalculated).'; return; }
+    const b = basisEl();
+    if (amountManual) { if (b) b.textContent = 'Manual amount — kept as entered (won’t be auto-recalculated).'; return; }
     const market = dval('d_market_region'), hrs = dval('d_hours'), wk = dval('d_weekly_hours');
-    if (!market || (!hrs && !wk)) return;
-    // Count the ACTUAL days of care — including weekends. Weekly coverage = 7; a specific
-    // schedule = the number of selected days (this is where a weekend span used to get
-    // dropped, undercounting the estimate).
-    const days = (state.recurrence === 'weekly') ? 7 : (state.days && state.days.size ? state.days.size : 7);
+    if (!market || (!hrs && !wk)) { if (b) b.textContent = 'Set market + hours per visit to auto-estimate.'; return; }
+    // Visits per week drives the estimate. The explicit field wins; otherwise infer from the
+    // availability schedule (weekly = 7, a specific schedule = the number of selected days).
+    // This is the fix for 1×/week short-hour leads that used to default to 7 and over-count.
+    const vpw = parseInt(dval('d_visits_per_week'), 10);
+    const days = vpw > 0 ? vpw : ((state.recurrence === 'weekly') ? 7 : (state.days && state.days.size ? state.days.size : 7));
     const hint = (typeof refHint === 'string') ? refHint : '';
     const refTxt = [hint, dval('d_referred_by'), dval('d_company_search'), dval('d_referral_search')].filter(Boolean).join(' ');
     const est = (window.LD && LD.estimateWeekly) ? LD.estimateWeekly(market, hrs, days, wk, refTxt) : 0;
     if (est > 0) {
       const a = document.getElementById('d_amount'); if (a) a.value = String(est);
-      const b = basisEl();
       if (b) b.textContent = wk ? ('Auto-estimated from ' + wk + ' hrs/week. Edit to override — your number is kept.')
-        : ('Auto-estimated from ' + days + ' day' + (days === 1 ? '' : 's') + '/week of visits. Check the days are right; edit to override — your number is kept.');
+        : ('Auto-estimated from ' + days + ' visit' + (days === 1 ? '' : 's') + '/week. Adjust “Visits per week” if that’s off — or edit the amount, your number is kept.');
+    } else if (b) {
+      b.textContent = 'Couldn’t estimate for this market/hours — enter the amount manually.';
     }
   }
 
@@ -1113,7 +1120,7 @@
     const iso = now.toISOString().slice(0, 10);
     return 'You parse a home-care lead-taker\'s free-text notes into (1) an availability-check intake, (2) a HubSpot deal, and (3) a Teams post for Tribute Home Care. Return ONLY valid JSON (no prose, no markdown fences): {"dealname":str,"teams_subject":str,"teams_summary":str,"availability":{...},"fields":{...},"unmapped":[str]}.\n'
       + 'availability (omit if unknown): coverage [Days, Overnights, 24/7, Live-in] (24/7 = around-the-clock TEAM with awake overnight shifts, NOT live-in; only pick Live-in if the caller explicitly says "live-in"); day_length [Long, Short] (Short=under ~5h/visit); recurrence [weekly, specific]; days_of_week array ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address (>=town + state; infer from venue); start_date YYYY-MM-DD; gender_preference [male, female] (omit if either); driver_required [true] (ONLY if the caller explicitly needs a caregiver who can drive/transport the client); restrictions array subset of [dog, cat, smoking] — include "dog" if there is a dog/dogs in the home, "cat" if a cat, "smoking" if anyone smokes.\n'
-      + 'fields (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender [Female, Male], client_dob; location_of_care [Private Home, Residence (non Brightview), Residence (Brightview)] (Private Home=house/apartment; Brightview=a Brightview community; non Brightview=other senior community — street address goes in availability.address NOT here); service_level [A,B,C,D,Live-In] (WEEKLY hours A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); IMPORTANT: "24/7"/around-the-clock is NOT live-in — for 24/7 set coverage=24/7, service_level=A, hours_of_service_a_day=5 (or 4 if split into 12h visits); ONLY set coverage=Live-in, service_level=Live-In, or hours_of_service_a_day=Live-in when the caller EXPLICITLY says "live-in" (one caregiver living in the home); schedule_requested; referred_by_ (referral source as free text); referral_company (the referring ORGANIZATION / community / agency name ONLY, e.g. "Care Dimensions" or "The Newbury" — drop parenthetical notes like "(hospice)"); referral_contact (the individual who made the referral, if a specific person is named in the notes, else omit); amount (number); lead_source [Assisted Living, Geriatric Care Manager (GCM), Home Health Care, Hospice, Hospital, Independent Living, Physician, Skilled Nursing Facility / Rehab, Tribute Employee, Tribute Client, Website, Unknown, Professional (non-medical)]; market_region [BOS, MWB, NB, SB, BAL, ANN, BET, NVA, CHI, NNJ] (Boston=BOS, MetroWest=MWB, North-of-Boston=NB, South-of-Boston=SB, Baltimore=BAL, Annapolis=ANN, Bethesda=BET, Chicago=CHI); dealtype [newbusiness, existingbusiness] (default newbusiness); home_environment array subset of [Cats in Home, Dogs in Home, No Pets in Home, Smokers in Home, Non-Smokers in Home, Parking Available, No Parking Available]; tone_of_call [Calm, Stressed, Skeptical, Rushed]; was_referral_source_thanked_ ["true","false"]; how_to_charge; caregiver_match; notes = GENERAL SUMMARY: a THOROUGH, flowing NARRATIVE in full sentences (several sentences to a few short paragraphs, NEVER bullets or fragments) that tells the story of the call the way the lead-taker would write it — who called and their relationship to the client, the client situation and the care they need, how Tribute was introduced and positioned, the questions or concerns the family raised and how they were addressed, the schedule discussed, and where things stand / next steps; be comprehensive and specific, do NOT compress it to one or two lines (this is the summary the team reads in the notification email, so it must read like a complete story of the conversation); details_about_client__personality__interests__behaviors__social_history = a NARRATIVE in full sentences about the CLIENT specifically — personality, interests, hobbies, behaviors, daily routines, and any social/family history mentioned — OMIT entirely if the notes contain none of this (do not repeat the call summary here); description (short deal description); scheduling_follow_up; client_solutions_followup = next steps ONLY if explicitly stated in the notes (e.g. "call back by 4pm") — otherwise OMIT it entirely, never invent a next step.\n'
+      + 'fields (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender [Female, Male], client_dob; location_of_care [Private Home, Residence (non Brightview), Residence (Brightview)] (Private Home=house/apartment; Brightview=a Brightview community; non Brightview=other senior community — street address goes in availability.address NOT here); service_level [A,B,C,D,Live-In] (WEEKLY hours A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); IMPORTANT: "24/7"/around-the-clock is NOT live-in — for 24/7 set coverage=24/7, service_level=A, hours_of_service_a_day=5 (or 4 if split into 12h visits); ONLY set coverage=Live-in, service_level=Live-In, or hours_of_service_a_day=Live-in when the caller EXPLICITLY says "live-in" (one caregiver living in the home); schedule_requested; referred_by_ (referral source as free text); referral_company (the referring ORGANIZATION / community / agency name ONLY, e.g. "Care Dimensions" or "The Newbury" — drop parenthetical notes like "(hospice)"); referral_contact (the individual who made the referral, if a specific person is named in the notes, else omit); amount (number); lead_source [Assisted Living, Geriatric Care Manager (GCM), Home Health Care, Hospice, Hospital, Independent Living, Physician, Skilled Nursing Facility / Rehab, Tribute Employee, Tribute Client, Website, Unknown, Professional (non-medical)]; market_region [BOS, MWB, NB, SB, BAL, ANN, BET, NVA, CHI, NNJ] (Boston=BOS, MetroWest=MWB, North-of-Boston=NB, South-of-Boston=SB, Baltimore=BAL, Annapolis=ANN, Bethesda=BET, Chicago=CHI); dealtype [newbusiness, existingbusiness] (default newbusiness); home_environment array subset of [Cats in Home, Dogs in Home, No Pets in Home, Smokers in Home, Non-Smokers in Home, Parking Available, No Parking Available]; tone_of_call [Calm, Stressed, Skeptical, Rushed]; was_referral_source_thanked_ ["true","false"]; how_to_charge; caregiver_match; notes = GENERAL SUMMARY: a CONCISE description (1–3 sentences, prose not bullets) of the NEED / ASK only — who needs care and the specific help or service requested, plus the schedule and start date if known. Keep it strictly to the ask; the client background, the story of the call, and the family concerns go in details_about_client, NOT here; details_about_client__personality__interests__behaviors__social_history = a THOROUGH, flowing NARRATIVE in full sentences (several sentences to a few short paragraphs, NEVER bullets) telling the story of the call — the client situation and background, personality / interests / history if mentioned, the family concerns and questions and how they were addressed, and how Tribute was introduced and positioned; be comprehensive and specific, and do NOT merely repeat the one-line need from the general summary; ALWAYS write the role as "Client Solutions Manager" — NEVER "Client Success Manager"; description (short deal description); scheduling_follow_up (usually leave empty — fold any scheduling / caregiver ideas into client_solutions_followup instead); client_solutions_followup = NEXT STEPS — what happens next plus any scheduling or follow-up ideas actually mentioned (e.g. "call back by 4pm", "wants a female caregiver for mornings"); omit only if nothing of the sort was said, never invent a next step.\n'
       + 'teams_subject: short subject line e.g. "LEAD — <community/town> (<client name(s)>)". teams_summary: 3-5 line plain-text Teams post; say "visit", never "shift". unmapped: anything important not fitting a field (e.g. "1.5-person rate", deadlines). Resolve relative dates; today is ' + wd + ' ' + iso + '.';
   }
 
@@ -1601,12 +1608,12 @@
       + "- One warm line that we look forward to the opportunity to support [client] (do not promise a timeline).\n"
       + "- Close by thanking them again for their trust in Tribute, that we value the partnership, and appreciate the opportunity to support [client].\n"
       + "- Warm sign-off with the sender's first name.\n"
-      + "No bullet points in the email body. Return ONLY JSON: {\"subject\":str,\"body\":str}. Body = full email text with line breaks, signed by the sender's first name (use [Your name] if unknown).";
+      + "No bullet points in the email body. Return ONLY JSON: {\"subject\":str,\"body\":str}. Body = full email text with line breaks, signed by the sender's first name (use [Your name] if unknown). ALWAYS write the role as 'Client Solutions Manager' — NEVER 'Client Success Manager'.";
   }
   // Family / caller consideration-stage follow-up (matches the Ask Tribute structure + house voice).
   let emailMode = 'referral';
   function familyEmailPrompt() {
-    return "You write a warm, personal follow-up email from a Tribute Home Care Client Solutions Manager to the FAMILY / caller after a phone call about their loved one (a prospective client still in the consideration stage). Match this voice EXACTLY — warm, empathetic, unhurried, personal, never salesy. Flowing prose, NO bullet points, about 4 short paragraphs:\n"
+    return "You write a warm, personal follow-up email from a Tribute Home Care Client Solutions Manager (ALWAYS that exact title — NEVER 'Client Success Manager') to the FAMILY / caller after a phone call about their loved one (a prospective client still in the consideration stage). Match this voice EXACTLY — warm, empathetic, unhurried, personal, never salesy. Flowing prose, NO bullet points, about 4 short paragraphs:\n"
       + "1. Thank them sincerely for taking the time to speak today about their loved one (use the caller's first name(s) if given).\n"
       + "2. Show genuine empathy about the specific situation/condition in the notes (e.g. Parkinson's), and acknowledge how much they clearly care for their loved one. NEVER invent medical details — use only what's given; if unknown, keep it general.\n"
       + "3. Reassure them you're here as they work through next steps and happy to answer any questions. Share our 'Working with Us' page to pass along to family: https://tributehomecare.com/workingwithus/ . Offer to have a Client Solutions Manager come out to meet the family in person, and note Tribute is glad to be a resource even if they go a different direction or need to delay care for any reason.\n"
@@ -1720,6 +1727,7 @@
   document.getElementById('d_market_region').onchange = autoFillAmount;
   document.getElementById('d_hours').onchange = autoFillAmount;
   document.getElementById('d_weekly_hours').oninput = autoFillAmount;
+  document.getElementById('d_visits_per_week').oninput = autoFillAmount;
   document.getElementById('d_referred_by').addEventListener('input', () => autoFillAmount());
   document.getElementById('d_company_search').addEventListener('input', () => autoFillAmount());
   // A real keystroke in Amount locks in a manual override (programmatic .value sets don't fire 'input').
