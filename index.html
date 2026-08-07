@@ -678,11 +678,17 @@
     try { const res = await msalApp.loginPopup({ scopes: GRAPH_SCOPES }); msalApp.setActiveAccount(res.account); setMsStatus(res.account); loadTeams(); }
     catch (e) { /* user closed the popup */ }
   }
-  async function graphToken() {
+  // interactive=true (default) is for user-gesture callers (clicking a team, posting) —
+  // they may open a sign-in popup. On page-load we pass false: if the silent token
+  // fails (expired session), we return null instead of a popup the browser would block.
+  async function graphToken(interactive = true) {
     if (!msalApp) return null;
     const acct = msalApp.getActiveAccount(); if (!acct) return null;
     try { const r = await msalApp.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: acct }); return r.accessToken; }
-    catch (e) { const r = await msalApp.acquireTokenPopup({ scopes: GRAPH_SCOPES }); return r.accessToken; }
+    catch (e) {
+      if (!interactive) return null;
+      const r = await msalApp.acquireTokenPopup({ scopes: GRAPH_SCOPES }); return r.accessToken;
+    }
   }
   async function graphGet(path, token) {
     const r = await fetch('https://graph.microsoft.com/v1.0' + path, { headers: { Authorization: 'Bearer ' + token } });
@@ -691,12 +697,14 @@
   }
   async function loadTeams() {
     const sel = document.getElementById('d_team'); if (!sel) return;
+    const reconnectMsg = '<option value="">— click “Reconnect” (top-right) to load teams —</option>';
     try {
-      const token = await graphToken(); if (!token) return;
+      const token = await graphToken(false);           // page-load: silent only, never a blocked popup
+      if (!token) { sel.innerHTML = reconnectMsg; return; }   // session expired → tell them to reconnect
       const j = await graphGet('/me/joinedTeams', token);
       const teams = (j.value || []).slice().sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
       sel.innerHTML = '<option value="">— choose a team —</option>' + teams.map(t => '<option value="' + esc(t.id) + '">' + esc(t.displayName) + '</option>').join('');
-    } catch (e) { sel.innerHTML = '<option value="">— could not load teams —</option>'; }
+    } catch (e) { sel.innerHTML = reconnectMsg; }
   }
   async function loadChannels(teamId) {
     const sel = document.getElementById('d_channel'); if (!sel) return;
