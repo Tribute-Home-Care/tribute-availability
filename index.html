@@ -1046,13 +1046,19 @@
     setSelectVal('d_service_level', f.service_level); setSelectVal('d_hours', f.hours_of_service_a_day);
     setInputVal('d_amount', f.amount != null ? String(f.amount) : ''); setInputVal('d_referred_by', f.referred_by_);
     setInputVal('d_schedule', f.schedule_requested); setSelectVal('d_location', f.location_of_care);
-    setInputVal('d_notes', f.notes); setInputVal('d_followup', f.scheduling_follow_up);
+    setInputVal('d_notes', f.notes);
     setInputVal('d_dealname', p.dealname); setInputVal('d_teams', p.teams_summary); setInputVal('d_teams_subject', p.teams_subject);
     setSelectVal('d_lead_source', f.lead_source); setSelectVal('d_market_region', f.market_region); setSelectVal('d_dealtype', f.dealtype);
     { const dm = deriveMarket(f.client_city, f.client_state); if (dm) setSelectVal('d_market_region', dm); } // town-level override beats the AI guess
     setSelectVal('d_tone', f.tone_of_call); setSelectVal('d_thanked', f.was_referral_source_thanked_); setSelectVal('d_policies', f.holiday_and_24_hour_cancellation_policies_reviewed);
     setInputVal('d_start_date', a.start_date); setInputVal('d_how_to_charge', f.how_to_charge); setInputVal('d_caregiver_match', f.caregiver_match);
-    setInputVal('d_thank_plan', f.if_referral_source_was_not_thanked__what_is_the_plan_); setInputVal('d_next_steps', f.client_solutions_followup);
+    setInputVal('d_thank_plan', f.if_referral_source_was_not_thanked__what_is_the_plan_);
+    // Next Steps always gets the actionable content, whichever field the AI used; the Follow-up
+    // (rarely-used) field only keeps a genuinely-separate scheduling idea. (Chelsea: next steps
+    // were landing under Follow-up.)
+    { const ns = f.client_solutions_followup || f.scheduling_follow_up || ''; const fu = (f.client_solutions_followup && f.scheduling_follow_up) ? f.scheduling_follow_up : '';
+      const nsEl = document.getElementById('d_next_steps'); if (nsEl) nsEl.value = ns;
+      const fuEl = document.getElementById('d_followup'); if (fuEl) fuEl.value = fu; }
     setInputVal('d_client_details', f.details_about_client__personality__interests__behaviors__social_history); setInputVal('d_description', f.description);
     if (Array.isArray(f.home_environment)) setHomeEnv(f.home_environment);
     if (Array.isArray(a.restrictions)) { state.restrictions = new Set(a.restrictions); document.querySelectorAll('#checks .chip').forEach(c => c.classList.toggle('on', state.restrictions.has(c.dataset.v))); }
@@ -1526,6 +1532,8 @@
             picked.innerHTML = '✓ Will associate <b>' + esc(referralContact.name) + '</b>' + (referralContact.email ? ' · ' + esc(referralContact.email) : ' · <span style="color:var(--hedge)">no email on file</span>');
             const rb = document.getElementById('d_referred_by'); if (rb && !rb.value) rb.value = referralContact.name;
             const et = document.getElementById('e_to'); if (et && !et.value && referralContact.email) et.value = referralContact.email;
+            // Also link the contact's Company (so partner reporting isn't lost) unless one's already chosen.
+            if (referralContact.company && !referralCompany) linkContactCompany(referralContact.company);
             sug.className = 'suggest hide';
           });
         } catch (e) { sug.className = 'suggest hide'; }
@@ -1561,6 +1569,24 @@
       }, 280);
     });
     document.addEventListener('click', (e) => { if (!inp.contains(e.target) && !sug.contains(e.target)) sug.className = 'suggest hide'; });
+  }
+
+  // When a referral CONTACT is chosen, also link their Company so partner reporting isn't lost
+  // (Chelsea: a contact got linked but not the company). Looks the contact's company name up
+  // against Company records and auto-selects the best match, flagged to verify.
+  async function linkContactCompany(companyName) {
+    if (!companyName) return;
+    try {
+      const r = await _authFetch(HS_BASE + '/hubspotcompanies?sid=' + encodeURIComponent(hsSid()) + '&q=' + encodeURIComponent(companyName));
+      const j = await r.json(); const list = j.companies || [];
+      if (!list.length) return;
+      const lc = String(companyName).toLowerCase();
+      const best = list.find(c => (c.name || '').toLowerCase() === lc) || list[0];
+      referralCompany = best;
+      const cs = document.getElementById('d_company_search'); if (cs) cs.value = best.name;
+      const picked = document.getElementById('d_company_picked');
+      if (picked) picked.innerHTML = '✓ Auto-linked Company <b>' + esc(best.name) + '</b> <span style="color:var(--hedge)">(from the contact — verify)</span>' + (best.place ? ' · ' + esc(best.place) : '');
+    } catch (e) {}
   }
 
   // Auto-match the parsed referral to actual HubSpot Company/Contact records so the
