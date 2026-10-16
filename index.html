@@ -240,6 +240,7 @@
   table.ldgrid th { background:var(--secondary); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); }
   table.ldgrid td.day { text-align:left; font-weight:600; background:var(--secondary); }
   table.ldgrid input { width:74px; border:1.5px solid var(--line); border-radius:6px; padding:3px; text-align:center; font:13px inherit; }
+  table.ldgrid input.ldrateIn { width:52px; }
   table.ldgrid input::placeholder { color:var(--hedge); font-size:11px; }
   table.ldgrid tbody tr:hover td { background:transparent; }
   .ldtotal { font-weight:800; font-size:16px; }
@@ -1859,7 +1860,37 @@
         else if(d1){ visits=[{win:"",hours:+d1[1],set:true}]; }
         else { const bk={"5":24,"4":12,"3":10,"2":6,"1":3}; visits=[{win:"",hours:bk[hpd]||6,set:true}]; }
       }
-      return {days,visits,unclear}; }
+      return toRows(days,visits,unclear); }
+    // Grid model: rows[dayIndex] = [visit1|null, visit2|null]; visit = {win, hours, set, rate(null = rate card)}.
+    // Every day carries its own visits, so one-off and uneven schedules (e.g. a single weekend) fit.
+    function toRows(days,visits,unclear){ const rows=DAYS.map(()=>[null,null]);
+      days.forEach(di=>{ rows[di]=[0,1].map(k=>visits[k]?{...visits[k],rate:null}:null); });
+      return {rows,unclear}; }
+    // "8p-8a" / "9-11a" / "9:30a-1p" / "noon-4p" -> {win,hours}; "6h" -> duration only (time still to set).
+    function parseWin(str){ let s=String(str||'').toLowerCase().replace(/\s+/g,'').replace(/noon/g,'12p').replace(/midnight/g,'12a').replace(/\./g,'').replace(/to|until/g,'-');
+      if(!s) return null;
+      const du=s.match(/^(\d+(?:\.\d+)?)(?:h|hr|hrs|hour|hours)$/); if(du) return {win:'',hours:+du[1],set:true};
+      const m=s.match(/^(\d{1,2})(?::(\d{2}))?([ap])?m?[-–](\d{1,2})(?::(\d{2}))?([ap])?m?$/); if(!m) return {win:str,hours:0,bad:true};
+      let h1=+m[1]+(m[2]?+m[2]/60:0), h2=+m[4]+(m[5]?+m[5]/60:0); let a1=m[3], a2=m[6];
+      if(h1>12||h2>12){ a1=a1||(h1>=12?'p':'a'); a2=a2||(h2>=12?'p':'a'); if(h1>12)h1-=12; if(h2>12)h2-=12; }
+      if(!a1&&!a2){ a1='a'; a2=(h2<=h1)?'p':'a'; }
+      else if(!a1){ a1=(h1<=h2||h1===12)?a2:(a2==='a'?'p':'a'); if(h1===12&&h2<12&&a2==='p')a1='p'; }
+      else if(!a2){ a2=a1; if(h2<=h1&&h1!==12)a2=(a1==='a'?'p':'a'); }
+      const to24=(h,a)=>a==='p'?(h%12)+12:(h%12);
+      const s1=to24(h1,a1), s2=to24(h2,a2); let dur=s2-s1; if(dur<=0) dur+=24;
+      return {win:fmt(s1)+'-'+fmt(s2),hours:Math.round(dur*100)/100,set:false}; }
+    // AI read of the free-text schedule -> per-day visits. Hours are computed here from the windows, never by the model.
+    async function aiSchedule(text){
+      const cal=[...Array(21)].map((_,k)=>{ const d=new Date(); d.setDate(d.getDate()+k-3); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+'='+DAYS[d.getDay()]; }).join(', ');
+      const sys='You turn a home care lead-taker\'s plain-English schedule into a weekly visit grid. Reply with ONLY JSON: {"days":{"Sun":[],"Mon":[],"Tue":[],"Wed":[],"Thu":[],"Fri":[],"Sat":[]},"note":""}. '
+        +'Each day holds 0-2 visit time windows written like "7a-7p", "8p-8a", "9-11:30a". A visit that runs past midnight belongs to the day it STARTS (Fri 8p-8a goes on Fri). An END time such as "ending Sunday 8am" or "through Sunday at 8a" is when the last overnight finishes: it is NOT a visit on Sunday. Never write a window that starts and ends at the same time (no "8a-8a"). '
+        +'"24/7" or "around the clock" with no times means "7a-7p" and "7p-7a" every day; if times are given, use them. If only certain days or dates are named (e.g. a single weekend, "Friday night through Sunday 8am"), fill ONLY those days. '
+        +'Night/overnight with no times given means 7p-7a. Dates: map them to weekdays using ONLY this calendar, never your own date math: '+cal+'. If only a duration is known, write it like "4h". Never invent visits. Use "note" (one short sentence, else "") only for something the grid cannot show, e.g. more than 2 visits in a day. Output plain JSON with normal double quotes, no backslashes, no code fences.';
+      const out=await callClaude(sys,'Schedule: '+text,600);
+      const j=JSON.parse(out.slice(out.indexOf('{'),out.lastIndexOf('}')+1).replace(/\\"/g,'"'));
+      const rows=DAYS.map(dn=>{ const arr=((j.days||{})[dn]||[]).slice(0,2).map(w=>{ const p=parseWin(w); return p?{...p,rate:null}:null; }); return [arr[0]||null,arr[1]||null]; });
+      if(!rows.some(r=>r[0]||r[1])) throw new Error('empty');
+      return {rows,unclear:false,aiNote:j.note||''}; }
 
     function renderList(f){ f=(f||"").toLowerCase();
       const rows=DEALS.map((d,i)=>({d,i})).filter(({d})=>!f||(d.name+d.market+MARKET_LABEL[d.market]).toLowerCase().includes(f));
@@ -1869,19 +1900,33 @@
         <span class="ldchip tmpl">${shortT(pickTemplate(d))}</span><span class="ldsched">${d.sched}</span>
         ${d.stage==='closedwon'?`<span class="ldbadge" style="margin-left:auto;background:var(--yes-bg);color:var(--yes);border-color:var(--yes-line)" title="Already Closed Won — sending a CSA will NOT change its stage">Closed Won</span>`:''}<span class="ldbadge">Needs CSA</span><span class="ldarrow">›</span></div>`).join(""); }
 
-    function gridHTML(p,t){ let total=0; const body=DAYS.map((dn,di)=>{
-      const on=p.days.includes(di); const v1=on?p.visits[0]:null, v2=on?p.visits[1]:null;
-      const r1=v1?rateForHours(t,v1.hours):0, r2=v2?rateForHours(t,v2.hours):0;
-      const c1=v1?v1.hours*r1:0, c2=v2?v2.hours*r2:0; total+=c1+c2;
-      const cell=v=>v?`<input value="${v.win}" placeholder="${v.set?'set time':''}" title="${v.hours}h">`:`<input value="">`;
-      return `<tr><td class="day">${dn}</td><td>${cell(v1)}</td><td>${cell(v2)}</td><td>${v1?'$'+r1:''}</td><td>${v2?'$'+r2:''}</td><td>${(c1+c2)?'$'+Math.round(c1+c2):''}</td></tr>`;
-    }).join("");
-      return `<table class="ldgrid"><thead><tr><th></th><th colspan="2">Hours (time window)</th><th colspan="2">Rate</th><th>Charge</th></tr>
+    const rateOf=(v,t)=>v?(v.rate!=null?v.rate:rateForHours(t,v.hours)):0;
+    const chargeOf=(row,t)=>row.reduce((a,v)=>a+(v&&!v.bad?v.hours*rateOf(v,t):0),0);
+    function gridHTML(p,t){ const esc=s=>String(s||'').replace(/"/g,'&quot;');
+      const body=DAYS.map((dn,di)=>{ const row=p.rows[di], c=chargeOf(row,t);
+        const cell=(v,k)=>`<input value="${esc(v?v.win:'')}" placeholder="${v&&v.set?'set time':''}" title="${v?v.hours+'h':'e.g. 8a-8p'}"${v&&v.bad?' style="border-color:var(--danger)"':''} onchange="LD.cell(${di},${k},this.value)">`;
+        const rate=(v,k)=>v?`<input id="ldR_${di}_${k}" class="ldrateIn" value="${rateOf(v,t)}" title="Rate card $${rateForHours(t,v.hours)} — type to override, clear to reset"${v.rate!=null?' style="border-color:var(--teal-d);font-weight:700"':''} oninput="LD.rate(${di},${k},this.value)" onchange="LD.rate(${di},${k},this.value,1)">`:'';
+        return `<tr><td class="day">${dn}</td><td>${cell(row[0],0)}</td><td>${cell(row[1],1)}</td><td>${rate(row[0],0)}</td><td>${rate(row[1],1)}</td><td id="ldC_${di}">${c?'$'+Math.round(c).toLocaleString():''}</td></tr>`;
+      }).join("");
+      return `<table class="ldgrid"><thead><tr><th></th><th colspan="2">Hours (time window)</th><th colspan="2">Rate $/hr</th><th>Charge</th></tr>
         <tr><th></th><th>Visit 1</th><th>Visit 2</th><th>V1</th><th>V2</th><th></th></tr></thead><tbody>${body}</tbody>
-        <tfoot><tr><td colspan="5" style="text-align:right;border:none">Weekly Total</td><td class="ldtotal">$${Math.round(total).toLocaleString()}</td></tr></tfoot></table>`; }
-    function renderGrid(){ $('ldGridWrap').innerHTML=gridHTML(parsed,$('ldTmpl').value); $('ldRate').textContent="Rates: "+rateCardText($('ldTmpl').value); }
-    function updateNote(){ const need=(parsed.unclear||!parsed.days.length||parsed.visits.some(v=>v.set));
-      $('ldNote').innerHTML=need?`<div class="ldnote">⚠ Times not fully specified (cells marked “set time” are a duration, not a clock window). Type the visit times above — e.g. “Mon/Wed/Fri 9-11a” — and click Apply.</div>`:""; }
+        <tfoot><tr><td colspan="5" style="text-align:right;border:none">Weekly Total</td><td class="ldtotal" id="ldTot">$${Math.round(p.rows.reduce((a,r)=>a+chargeOf(r,t),0)).toLocaleString()}</td></tr></tfoot></table>`; }
+    function renderGrid(){ $('ldGridWrap').innerHTML=gridHTML(parsed,$('ldTmpl').value); $('ldRate').textContent="Rates: "+rateCardText($('ldTmpl').value)+" · every cell is editable"; }
+    // Recompute charges + total in place (no re-render, so tabbing between cells keeps focus).
+    function recalc(){ const t=$('ldTmpl').value; let tot=0;
+      parsed.rows.forEach((row,di)=>{ const c=chargeOf(row,t); tot+=c; const el=$('ldC_'+di); if(el) el.textContent=c?'$'+Math.round(c).toLocaleString():''; });
+      $('ldTot').textContent='$'+Math.round(tot).toLocaleString(); }
+    function cell(di,k,val){ const p=parseWin(val), row=parsed.rows[di];
+      row[k]=p?{...p,rate:row[k]?row[k].rate:null}:null;
+      renderGrid(); updateNote(); }
+    function rate(di,k,val,final){ const v=parsed.rows[di][k]; if(!v) return; const n=parseFloat(String(val).replace(/[$,]/g,''));
+      v.rate=(String(val).trim()===''||isNaN(n))?null:n;
+      if(final) renderGrid(); else recalc(); }
+    function updateNote(){ const vs=parsed.rows.flat().filter(Boolean); const msgs=[];
+      if(parsed.aiNote) msgs.push('✨ '+parsed.aiNote);
+      if(vs.some(v=>v.bad)) msgs.push('⚠ A time in red couldn’t be read. Use a format like “8a-8p” or “8p-8a”.');
+      if(parsed.unclear||!vs.length||vs.some(v=>v.set)) msgs.push('⚠ Times not fully specified (cells marked “set time” are a duration, not a clock window). Type the times into the grid, or describe them above, e.g. “Fri 8p-8a, Sat 8a-8p and 8p-8a”, and click Apply.');
+      $('ldNote').innerHTML=msgs.map(m=>`<div class="ldnote">${m}</div>`).join(""); }
 
     function open(i){ cur=i; const d=DEALS[i]; const t=pickTemplate(d); parsed=parseSchedule(d.sched,d.hpd);
       const opts=TEMPLATES.map(x=>`<option ${x===t?'selected':''}>${x}</option>`).join("");
@@ -1922,18 +1967,20 @@
       renderGrid(); updateNote(); }
     function refreshBody(){ $('ldBody').value = defBody(DEALS[cur], $('ldStartDate').value); }
     function close(){ $('ldDetail').classList.add('hide'); $('ldQueue').classList.remove('hide'); }
-    function apply(){ parsed=parseSchedule($('ldTimes').value, DEALS[cur].hpd); renderGrid(); updateNote(); }
+    async function apply(){ const txt=$('ldTimes').value, btn=document.querySelector('.ldtimebox button');
+      if(btn){ btn.disabled=true; btn.textContent='Reading…'; }
+      try{ parsed=await aiSchedule(txt); }
+      catch(e){ parsed=parseSchedule(txt, DEALS[cur].hpd); parsed.aiNote='Couldn’t reach the AI reader, so this is a basic read. Check every day and edit the grid directly.'; }
+      if(btn){ btn.disabled=false; btn.textContent='Apply'; }
+      renderGrid(); updateNote(); }
     async function gen(){
       const d=DEALS[cur], t=$('ldTmpl').value;
       const clientName=$('ldClientName').value.trim(), clientEmail=$('ldClientEmail').value.trim();
       if(!/.+@.+\..+/.test(clientEmail)){ $('ldGen').innerHTML='<span style="color:var(--danger)">Enter a valid client email first.</span>'; $('ldClientEmail').focus(); return; }
+      if(parsed.rows.flat().some(v=>v&&v.bad)){ $('ldGen').innerHTML='<span style="color:var(--danger)">Fix the time shown in red first.</span>'; return; }
       const pf={}; let total=0;
-      DAYS.forEach((dn,di)=>{ if(!parsed.days.includes(di)) return;
-        const v1=parsed.visits[0], v2=parsed.visits[1];
-        const r1=v1?rateForHours(t,v1.hours):0, r2=v2?rateForHours(t,v2.hours):0;
-        const c=(v1?v1.hours*r1:0)+(v2?v2.hours*r2:0); total+=c;
-        if(v1){ pf[dn+'_V1H']=v1.win||(v1.hours+'h'); pf[dn+'_V1R']='$'+r1; }
-        if(v2){ pf[dn+'_V2H']=v2.win||(v2.hours+'h'); pf[dn+'_V2R']='$'+r2; }
+      DAYS.forEach((dn,di)=>{ const row=parsed.rows[di], c=chargeOf(row,t); total+=c;
+        row.forEach((v,k)=>{ if(!v) return; pf[dn+'_V'+(k+1)+'H']=v.win||(v.hours+'h'); pf[dn+'_V'+(k+1)+'R']='$'+rateOf(v,t); });
         if(c) pf[dn+'_CHG']='$'+Math.round(c);
       });
       pf['WeeklyTotal']='$'+Math.round(total).toLocaleString();
@@ -1959,7 +2006,7 @@
       }catch(e){ $('ldList').innerHTML='<div class="ldnote">Could not load leads: '+e.message+'</div>'; return; }
       renderList('');
     }
-    return {init, open, close, apply, grid:renderGrid, gen, refreshBody, estimateWeekly};
+    return {init, open, close, apply, grid:renderGrid, cell, rate, gen, refreshBody, estimateWeekly};
   })();
 </script>
 </body>
