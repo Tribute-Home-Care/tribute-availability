@@ -2000,7 +2000,7 @@
         const r=await _authFetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({dealId:d.id, template:t, clientName, clientEmail, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:false})});
         const j=await r.json().catch(()=>({}));
-        if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML='Connect DocuSign (top-right) first.'; dsConnect(); return; }
+        if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML=j.reason==='expired'?'Your DocuSign login expired. Sign in again in the window that just opened, then click Generate again.':'Connect DocuSign (top-right) first.'; dsWhoami(); dsConnect(); return; }
         if(!j.ok){ $('ldGen').innerHTML='<span style="color:var(--danger)">Error: '+(j.error||'failed')+(j.detail?(' — '+j.detail):'')+'</span>'; return; }
         $('ldGen').innerHTML='✅ Draft created as <b>'+(j.sentAs||'you')+'</b>'+(j.advanced?' · deal → Contract Sent':'')+(j.reviewUrl?(' · <a href="'+j.reviewUrl+'" target="_blank" style="color:var(--teal-d);font-weight:700">Review &amp; send in DocuSign →</a>'):'');
       }catch(e){ $('ldGen').innerHTML='<span style="color:var(--danger)">'+e.message+'</span>'; }
