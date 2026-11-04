@@ -391,6 +391,15 @@
         <button type="button" data-v="1">Must drive 🚗</button>
       </div>
 
+      <label>Certification needed?</label>
+      <div class="seg" id="certification">
+        <button type="button" data-v="" class="on">Any</button>
+        <button type="button" data-v="CNA">CNA</button>
+        <button type="button" data-v="CNA-I">CNA-I</button>
+        <button type="button" data-v="CNA-II">CNA-II</button>
+      </div>
+      <div class="muted" id="certnote">CNA-I and CNA-II are the Maryland levels. Massachusetts and Illinois caregivers carry a plain CNA. From isolved, refreshed nightly.</div>
+
       <label>Restrictions</label>
       <div class="chips" id="checks">
         <span class="chip" data-v="dog">Dog</span>
@@ -1044,6 +1053,7 @@
     setSegVal('recurrence', 'recurrence', a.recurrence, () => document.getElementById('daysWrap').classList.toggle('hide', state.recurrence !== 'specific'));
     setSegVal('gender', 'gender', a.gender_preference);
     setSegVal('driver', 'driver', a.driver_required ? '1' : '');
+    setSegVal('certification', 'certification', a.certification || '');
     if (Array.isArray(a.days_of_week)) setDaysVal(a.days_of_week);
     if (a.address) { const ai = document.getElementById('client_address'); if (ai) { ai.value = a.address; state.coords = null; } }
     setInputVal('start_date', a.start_date);
@@ -1142,7 +1152,7 @@
     const wd = now.toLocaleDateString('en-US', { weekday: 'long' });
     const iso = now.toISOString().slice(0, 10);
     return 'You parse a home-care lead-taker\'s free-text notes into (1) an availability-check intake, (2) a HubSpot deal, and (3) a Teams post for Tribute Home Care. Return ONLY valid JSON (no prose, no markdown fences): {"dealname":str,"teams_subject":str,"teams_summary":str,"availability":{...},"fields":{...},"unmapped":[str]}.\n'
-      + 'availability (omit if unknown): coverage [Days, Overnights, 24/7, Live-in] (24/7 = around-the-clock TEAM with awake overnight shifts, NOT live-in; only pick Live-in if the caller explicitly says "live-in"); day_length [Long, Short] (Short=under ~5h/visit); recurrence [weekly, specific]; days_of_week array ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address (>=town + state; infer from venue); start_date YYYY-MM-DD; gender_preference [male, female] (omit if either); driver_required [true] (ONLY if the caller explicitly needs a caregiver who can drive/transport the client); restrictions array subset of [dog, cat, smoking] — include "dog" if there is a dog/dogs in the home, "cat" if a cat, "smoking" if anyone smokes.\n'
+      + 'availability (omit if unknown): coverage [Days, Overnights, 24/7, Live-in] (24/7 = around-the-clock TEAM with awake overnight shifts, NOT live-in; only pick Live-in if the caller explicitly says "live-in"); day_length [Long, Short] (Short=under ~5h/visit); recurrence [weekly, specific]; days_of_week array ints 0=Sun..6=Sat (only if recurrence=specific); address a GEOCODABLE address (>=town + state; infer from venue); start_date YYYY-MM-DD; gender_preference [male, female] (omit if either); driver_required [true] (ONLY if the caller explicitly needs a caregiver who can drive/transport the client); certification [CNA, CNA-I, CNA-II] (ONLY if the caller requires a certified nursing assistant; CNA-I/CNA-II are Maryland levels, otherwise CNA); restrictions array subset of [dog, cat, smoking] — include "dog" if there is a dog/dogs in the home, "cat" if a cat, "smoking" if anyone smokes.\n'
       + 'fields (omit unknowns; NEVER guess phone/email/dob): caller_name, caller_phone, caller_email, caller_s_relationship_to_client [Adult Child, Son or Daughter in Law, Spouse or Partner, Calling for Self, GCM, Residence Dir, Other]; client_name (FIRST name), client_last_name, client_phone, client_email, client_city, client_state, client_gender [Female, Male], client_dob; location_of_care [Private Home, Residence (non Brightview), Residence (Brightview)] (Private Home=house/apartment; Brightview=a Brightview community; non Brightview=other senior community — street address goes in availability.address NOT here); service_level [A,B,C,D,Live-In] (WEEKLY hours A=120+,B=61-119,C=24-60,D=1-23); hours_of_service_a_day ["5","4","3","2","1","Live-in"] (PER VISIT 5=24h,4=12-23h,3=9-11h,2=5-8h,1=1-4h); IMPORTANT: "24/7"/around-the-clock is NOT live-in — for 24/7 set coverage=24/7, service_level=A, hours_of_service_a_day=5 (or 4 if split into 12h visits); ONLY set coverage=Live-in, service_level=Live-In, or hours_of_service_a_day=Live-in when the caller EXPLICITLY says "live-in" (one caregiver living in the home); schedule_requested; referred_by_ (referral source as free text); referral_company (the referring ORGANIZATION / community / agency name ONLY, e.g. "Care Dimensions" or "The Newbury" — drop parenthetical notes like "(hospice)"); referral_contact (the individual who made the referral, if a specific person is named in the notes, else omit); amount (number); lead_source [Assisted Living, Geriatric Care Manager (GCM), Home Health Care, Hospice, Hospital, Independent Living, Physician, Skilled Nursing Facility / Rehab, Tribute Employee, Tribute Client, Website, Unknown, Professional (non-medical)]; market_region [BOS, MWB, NB, SB, BAL, ANN, BET, NVA, CHI, NNJ] (Boston=BOS, MetroWest=MWB, North-of-Boston=NB, South-of-Boston=SB, Baltimore=BAL, Annapolis=ANN, Bethesda=BET, Chicago=CHI); dealtype [newbusiness, existingbusiness] (default newbusiness); home_environment array subset of [Cats in Home, Dogs in Home, No Pets in Home, Smokers in Home, Non-Smokers in Home, Parking Available, No Parking Available]; tone_of_call [Calm, Stressed, Skeptical, Rushed]; availability_answer_on_call [hedge, yes] = did the lead taker hedge on whether Tribute can staff the schedule (hedge = will check with scheduling / cannot promise / will call back; yes = did not hedge, committed or clearly answered) — omit unless the notes say what was told; was_referral_source_thanked_ ["true","false"]; how_to_charge; caregiver_match; notes = GENERAL SUMMARY: the MAIN write-up of the call in clear prose — the need / ask (who needs care and the specific help), the situation and schedule, how Tribute was introduced, the family concerns and questions and how they were addressed, and where things stand. This is the primary summary: everything about the CALL and the NEED goes here; details_about_client__personality__interests__behaviors__social_history = ONLY personal background about the client — social history, career / occupation, personality, interests, and family makeup — i.e. who they are as a person. Do NOT put the care need, schedule, or story of the call here (that belongs in the general summary); omit entirely if no personal background was shared; ALWAYS write the role as "Client Solutions Manager" — NEVER "Client Success Manager"; description (short deal description); scheduling_follow_up (usually leave empty — fold any scheduling / caregiver ideas into client_solutions_followup instead); client_solutions_followup = NEXT STEPS — what happens next plus any scheduling or follow-up ideas actually mentioned (e.g. "call back by 4pm", "wants a female caregiver for mornings"); omit only if nothing of the sort was said, never invent a next step.\n'
       + 'dealname = the CLIENT\'s full name ONLY (First Last), e.g. "Joyce Simard" — do NOT append the town, state, a dash, the caller name, or anything else. teams_subject: short subject line e.g. "LEAD — <community/town> (<client name(s)>)". teams_summary: 3-5 line plain-text Teams post; say "visit", never "shift". unmapped: anything important not fitting a field (e.g. "1.5-person rate", deadlines). Resolve relative dates; today is ' + wd + ' ' + iso + '.';
   }
@@ -1248,7 +1258,7 @@
   })();
 
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const state = { coverage:'Days', day_length:'Long', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), gender:'', driver:'', coords:null };
+  const state = { coverage:'Days', day_length:'Long', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), gender:'', driver:'', certification:'', coords:null };
 
   const daysEl = document.getElementById('days');
   DOW.forEach((d,i) => {
@@ -1275,6 +1285,7 @@
   seg('recurrence','recurrence', () => document.getElementById('daysWrap').classList.toggle('hide', state.recurrence!=='specific'));
   seg('gender','gender');
   seg('driver','driver');
+  seg('certification','certification');
   document.querySelectorAll('#checks .chip').forEach(c => c.onclick = () => {
     c.classList.toggle('on'); c.classList.contains('on')?state.restrictions.add(c.dataset.v):state.restrictions.delete(c.dataset.v);
   });
@@ -1335,6 +1346,7 @@
         restrictions: [...state.restrictions],
         gender_preference: state.gender || undefined,
         driver_required: state.driver === '1' ? true : undefined,
+        certification: state.certification || undefined,
         // Client's market (town-derived) so open-demand netting scopes to their market.
         market: (document.getElementById('d_market_region') && document.getElementById('d_market_region').value) || undefined,
       };
@@ -1461,6 +1473,8 @@
       const parts = wr.per_shift.map(s => rowLabel(s.row) + ': ' + s.days_clear + ' of 7 days with ' + wr.min_net + '+ net' + (s.days.length && s.days.length < 7 ? ' (' + s.days.join(', ') + ')' : ''));
       h += '<div class="muted" style="margin:6px 0 10px;font-size:13px">Rule: ' + wr.min_net + '+ net surplus on at least ' + wr.needed_days + ' of 7 days within ' + (d.radius_miles || 30) + ' driving miles. ' + parts.map(esc).join(' · ') + '.</div>';
       if (d.heads_up) h += '<div class="notg" style="margin-bottom:10px"><b>Heads up for Scheduling</b>' + esc(d.heads_up) + '. Not a hedge: the week clears.</div>';
+      if (d.certification && !d.certifications_seen) h += '<div class="notg" style="margin-bottom:10px"><b>Certification data did not load</b> so nobody matched the ' + esc(d.certification) + ' filter. Treat this answer as a hedge and tell Andrew.</div>';
+      else if (d.certification) h += '<div class="muted" style="margin:0 0 10px;font-size:13px">Counting only caregivers with an unexpired ' + esc(d.certification) + ' on file in isolved' + (d.certifications_synced_at ? ' (as of ' + esc(String(d.certifications_synced_at).slice(0,10)) + ')' : '') + '.</div>';
     }
     h += '<div class="answer"><div class="lab">The answer</div><div id="answerBox" class="abx"><span class="think">Summarizing…</span></div></div>';
     if (confirm.length) h += '<div class="ok">✅ <b>Confirm now</b> — ' + confirm.map(esc).join(' · ') + '</div>';
@@ -1475,7 +1489,8 @@
        + '<form id="qaForm" class="qarow"><input id="qaInput" type="text" placeholder="e.g. What about Thursday overnights?" autocomplete="off" /><button class="qabtn" type="submit">Ask</button></form></div>';
     h += whoHTML(d);
     h += '<div class="foot">'+esc(d.coverage)+' · '+esc(d.days_per_week)+' day(s)/week · '+esc(d.caregivers_local)+' local'
-       + (d.caregivers_extended!=null?' · '+esc(d.caregivers_extended)+' beyond 20mi':'')
+       + (d.certification?' · '+esc(d.certification)+' only':'')
+       + (d.caregivers_extended!=null?' · '+esc(d.caregivers_extended)+' beyond '+esc(d.radius_miles||30)+'mi':'')
        + (d.open_demand_total!=null?' · '+esc(d.open_demand_total)+' open booking sets netted':'')+'</div>';
     h += '</div>';
     return h;
