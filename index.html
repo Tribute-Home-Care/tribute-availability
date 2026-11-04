@@ -2013,8 +2013,12 @@
         <div class="ldrate" id="ldRate"></div><div id="ldNote"></div><div id="ldGridWrap"></div>
         <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:22px 0 10px">Recipient &amp; email</h3>
         <div class="ldfields">
-          <div class="ldf"><label>Client name (signs · prefilled on p.1)</label><input type="text" id="ldClientName" value="${esc(clientNm)}"></div>
-          <div class="ldf"><label>Send to — client email <span style="color:var(--danger)">· verify</span></label><input type="text" id="ldClientEmail" value="${esc(email)}" placeholder="client@email.com"></div>
+          <div class="ldf"><label>Client name (prefilled on p.1)</label><input type="text" id="ldClientName" value="${esc(clientNm)}"></div>
+          <div class="ldf"><label>Who is signing?</label><select id="ldSignWho" onchange="LD.signWho()">
+            <option value="client">The client</option><option value="rep">Someone on the client's behalf (family, POA)</option></select></div>
+          <div class="ldf ldrepf hide"><label>Signer's full name</label><input type="text" id="ldSignerName" placeholder="e.g. Jane Smith"></div>
+          <div class="ldf ldrepf hide"><label>Relationship to client</label><input type="text" id="ldSignerRel" placeholder="e.g. Daughter, POA"></div>
+          <div class="ldf"><label><span id="ldEmailLbl">Send to: client email</span> <span style="color:var(--danger)">· verify</span></label><input type="text" id="ldClientEmail" value="${esc(email)}" placeholder="name@email.com"></div>
           <div class="ldf"><label>Start of care date</label><input type="date" id="ldStartDate" value="${sdate}" onchange="LD.refreshBody()"></div>
           <div class="ldf"><label>Email subject</label><input type="text" id="ldSubject" value="${esc(subj)}"></div>
         </div>
@@ -2028,6 +2032,9 @@
           <span class="muted" id="ldGen">${d.csa&&d.csa.status==='drafted'?'⚠ A draft was already created'+(d.csa.by?' by '+d.csa.by:'')+(d.csa.at?' on '+new Date(d.csa.at).toLocaleDateString('en-US',{month:'numeric',day:'numeric'}):'')+' and has not been sent. Send or delete it in DocuSign before making another.':(d.csa&&d.csa.status==='sent'?'CSA already sent'+(d.csa.sentAt?' on '+new Date(d.csa.sentAt).toLocaleDateString('en-US',{month:'numeric',day:'numeric'}):''):'Not started')}</span></div>
       </div>`;
       renderGrid(); updateNote(); }
+    function signWho(){ const rep=$('ldSignWho').value==='rep';
+      document.querySelectorAll('.ldrepf').forEach(e=>e.classList.toggle('hide',!rep));
+      $('ldEmailLbl').textContent=rep?'Send to: signer\'s email':'Send to: client email'; if(rep) $('ldSignerName').focus(); }
     function refreshBody(){ $('ldBody').value = defBody(DEALS[cur], $('ldStartDate').value); }
     function close(){ $('ldDetail').classList.add('hide'); $('ldQueue').classList.remove('hide'); }
     async function apply(){ const txt=$('ldTimes').value, btn=document.querySelector('.ldtimebox button');
@@ -2039,7 +2046,9 @@
     async function gen(){
       const d=DEALS[cur], t=$('ldTmpl').value;
       const clientName=$('ldClientName').value.trim(), clientEmail=$('ldClientEmail').value.trim();
-      if(!/.+@.+\..+/.test(clientEmail)){ $('ldGen').innerHTML='<span style="color:var(--danger)">Enter a valid client email first.</span>'; $('ldClientEmail').focus(); return; }
+      const isRep=$('ldSignWho').value==='rep', signerName=isRep?$('ldSignerName').value.trim():clientName, signerRel=isRep?$('ldSignerRel').value.trim():'';
+      if(isRep&&!/\S+\s+\S+/.test(signerName)){ $('ldGen').innerHTML='<span style="color:var(--danger)">Enter the signer\'s full name first.</span>'; $('ldSignerName').focus(); return; }
+      if(!/.+@.+\..+/.test(clientEmail)){ $('ldGen').innerHTML='<span style="color:var(--danger)">Enter a valid email for the signer first.</span>'; $('ldClientEmail').focus(); return; }
       if(parsed.rows.flat().some(v=>v&&v.bad)){ $('ldGen').innerHTML='<span style="color:var(--danger)">Fix the time shown in red first.</span>'; return; }
       const pf={}; let total=0;
       DAYS.forEach((dn,di)=>{ const row=parsed.rows[di], c=chargeOf(row,t); total+=c;
@@ -2051,7 +2060,7 @@
       $('ldGen').textContent='Generating…';
       try{
         const r=await _authFetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({dealId:d.id, template:t, clientName, clientEmail, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:false})});
+          body:JSON.stringify({dealId:d.id, template:t, clientName, clientEmail, signerName, signerRelationship:signerRel, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:false})});
         const j=await r.json().catch(()=>({}));
         if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML=j.reason==='expired'?'Your DocuSign login expired. Sign in again in the window that just opened, then click Generate again.':'Connect DocuSign (top-right) first.'; dsWhoami(); dsConnect(); return; }
         if(!j.ok){ $('ldGen').innerHTML='<span style="color:var(--danger)">Error: '+(j.error||'failed')+(j.detail?(' — '+j.detail):'')+'</span>'; return; }
@@ -2070,7 +2079,7 @@
       }catch(e){ $('ldList').innerHTML='<div class="ldnote">Could not load leads: '+e.message+'</div>'; return; }
       renderList('');
     }
-    return {init, open, close, apply, grid:renderGrid, cell, rate, gen, refreshBody, estimateWeekly, mark, toggleRemoved};
+    return {init, open, close, apply, grid:renderGrid, cell, rate, gen, refreshBody, estimateWeekly, mark, toggleRemoved, signWho};
   })();
 </script>
 </body>
