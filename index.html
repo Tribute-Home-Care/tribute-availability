@@ -1291,6 +1291,11 @@
   });
 
   const esc = s => String(s ?? '').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+  // "2026-11-22" reads badly out loud; say "Sunday, November 22".
+  const friendlyDates = s => String(s ?? '').replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, d) => {
+    const dt = new Date(+y, +mo - 1, +d); if (isNaN(dt)) return m;
+    return dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  });
 
   // Address autocomplete — OpenStreetMap (keyless), called directly from the browser.
   async function osmSearch(q) {
@@ -1466,23 +1471,25 @@
       if (greens.length) confirm.push(rowLabel(row.row) + ': ' + greens.join(', '));
       if (notg.length) hedge.push(rowLabel(row.row) + ': ' + notg.join(', '));
     }
-    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ Hedge — confirm with the team')+'</div>';
-    // The rule, in one line, with the week it read: net surplus of 2+ on 5 of 7 days.
+    // Lead taker sees two things: the verdict and what to say. Nothing about
+    // which days are tight (Jen Kulig, 2026-11-04: once we take the risk on the
+    // defined logic, Scheduling figures out the deficit days). Everything else
+    // lives behind the details link for Scheduling.
+    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ HEDGE — confirm with the team')+'</div>';
+    if (d.certification && !d.certifications_seen) h += '<div class="notg" style="margin:10px 0"><b>Certification data did not load</b> so nobody matched the ' + esc(d.certification) + ' filter. Treat this answer as a hedge and tell Andrew.</div>';
+    h += '<div class="tell"><div class="lab">Say to the caller</div><div class="scr">“'+esc(friendlyDates(d.lead_taker_script))+'”</div></div>';
+    h += '<button type="button" class="toggle" id="showDetails">▾ Show details for Scheduling</button>';
+    h += '<div id="detailsWrap" class="hide">';
     if (d.week_rule && d.week_rule.per_shift && d.week_rule.per_shift.length) {
       const wr = d.week_rule;
       const parts = wr.per_shift.map(s => rowLabel(s.row) + ': ' + s.days_clear + ' of 7 days with ' + wr.min_net + '+ net' + (s.days.length && s.days.length < 7 ? ' (' + s.days.join(', ') + ')' : ''));
       h += '<div class="muted" style="margin:6px 0 10px;font-size:13px">Rule: ' + wr.min_net + '+ net surplus on at least ' + wr.needed_days + ' of 7 days within ' + (d.radius_miles || 30) + ' driving miles. ' + parts.map(esc).join(' · ') + '.</div>';
-      if (d.heads_up) h += '<div class="notg" style="margin-bottom:10px"><b>Heads up for Scheduling</b>' + esc(d.heads_up) + '. Not a hedge: the week clears.</div>';
-      if (d.certification && !d.certifications_seen) h += '<div class="notg" style="margin-bottom:10px"><b>Certification data did not load</b> so nobody matched the ' + esc(d.certification) + ' filter. Treat this answer as a hedge and tell Andrew.</div>';
-      else if (d.certification) h += '<div class="muted" style="margin:0 0 10px;font-size:13px">Counting only caregivers with an unexpired ' + esc(d.certification) + ' on file in isolved' + (d.certifications_synced_at ? ' (as of ' + esc(String(d.certifications_synced_at).slice(0,10)) + ')' : '') + '.</div>';
+      if (d.heads_up) h += '<div class="notg" style="margin-bottom:10px"><b>Deficit days</b>' + esc(d.heads_up) + '. Not a hedge: the week clears.</div>';
+      if (d.certification && d.certifications_seen) h += '<div class="muted" style="margin:0 0 10px;font-size:13px">Counting only caregivers with an unexpired ' + esc(d.certification) + ' on file in isolved' + (d.certifications_synced_at ? ' (as of ' + esc(String(d.certifications_synced_at).slice(0,10)) + ')' : '') + '.</div>';
     }
     h += '<div class="answer"><div class="lab">The answer</div><div id="answerBox" class="abx"><span class="think">Summarizing…</span></div></div>';
-    if (confirm.length) h += '<div class="ok">✅ <b>Confirm now</b> — ' + confirm.map(esc).join(' · ') + '</div>';
-    if (hedge.length) h += '<div class="notg"><b>⚠️ Confirm with my team' + (confirm.length ? '' : ' — the whole case') + '</b> — ' + hedge.map(esc).join(' · ') + '</div>';
-    h += '<div class="tell"><div class="lab">Say to the caller</div><div class="scr">“'+esc(d.lead_taker_script)+'”</div></div>';
-    // Everything detailed (grid, numbers, candidates, follow-up) is hidden by default — not shown on the call.
-    h += '<button type="button" class="toggle" id="showDetails">▾ Show availability details</button>';
-    h += '<div id="detailsWrap" class="hide">';
+    if (confirm.length) h += '<div class="ok">✅ <b>Clear</b> — ' + confirm.map(esc).join(' · ') + '</div>';
+    if (hedge.length) h += '<div class="notg"><b>⚠️ Tight</b> — ' + hedge.map(esc).join(' · ') + '</div>';
     h += rygGridHTML(d.ryg_grid);
     h += notGuaranteedHTML(d.ryg_grid);
     h += '<div class="qa"><div class="lab">Ask a follow-up</div><div id="qaLog" class="qalog"></div>'
@@ -1538,7 +1545,7 @@
     if (tog) tog.onclick = () => {
       const w = document.getElementById('detailsWrap');
       const hidden = w.classList.toggle('hide');
-      tog.textContent = hidden ? '▾ Show availability details' : '▴ Hide availability details';
+      tog.textContent = hidden ? '▾ Show details for Scheduling' : '▴ Hide details for Scheduling';
     };
     const qf = document.getElementById('qaForm');
     if (qf) qf.onsubmit = async (e) => {
