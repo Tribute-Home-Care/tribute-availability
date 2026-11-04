@@ -445,7 +445,7 @@
       </select></div>
       <div><label>Hedged?</label><select id="d_avail_answer">
         <option value="">—</option><option value="hedge">Yes</option><option value="yes">No</option>
-      </select><span class="muted">Required for A, B and Live-In. Yes = you didn't confirm we can staff it.</span></div>
+      </select><span class="muted">Required. Yes = you didn't confirm we can staff it.</span></div>
       <div><label>Location of care</label><select id="d_location">
         <option value="">—</option><option value="Private Home">Private Home</option><option value="Residence (non Brightview)">Residence (Community at Large)</option><option value="Residence (Brightview)">Brightview</option>
       </select></div>
@@ -879,9 +879,9 @@
       if (!v) { missing.push(label); if (vis) vis.style.borderColor = '#B91C1C'; }
       else if (vis) { vis.style.borderColor = ''; }
     });
-    // Long-hour leads (A / B / Live-In): we track how often lead takers hedge on availability.
+    // Every lead: we track how often lead takers hedge on availability.
     const ans = document.getElementById('d_avail_answer');
-    if (['A', 'B', 'Live-In'].includes(dval('d_service_level')) && !ans.value) {
+    if (!ans.value) {
       missing.push('Hedged?'); ans.style.borderColor = '#B91C1C';
     } else { ans.style.borderColor = ''; }
     return missing;
