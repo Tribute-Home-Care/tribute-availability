@@ -1371,7 +1371,7 @@
         const txt = cell.color === 'red' ? '' : String(cell.net_free);
         const title = cell.label + ': ' + cell.local + ' local free'
           + (cell.competing_demand ? ', ' + cell.competing_demand + ' open booking set(s)' : '')
-          + (cell.extended ? ', ' + cell.extended + ' beyond 20mi' : '')
+          + (cell.extended ? ', ' + cell.extended + ' beyond ' + (g.radius_miles || 30) + 'mi' : '')
           + (cell.requested ? '' : ' — not requested');
         h += '<td><div class="'+cls+'" title="'+esc(title)+'">'+txt+'</div></td>';
       }
@@ -1422,7 +1422,7 @@
       h += '</table>';
     }
     if (d.extended_options && d.extended_options.length)
-      h += '<div class="foot">Beyond 20mi: '+d.extended_options.map(o=>esc(o.name)+' ('+esc(o.distance_miles)+' mi)').join(', ')+'</div>';
+      h += '<div class="foot">Beyond '+(d.radius_miles||30)+'mi: '+d.extended_options.map(o=>esc(o.name)+' ('+esc(o.distance_miles)+' mi)').join(', ')+'</div>';
     return h;
   }
 
@@ -1430,7 +1430,13 @@
   function setAvailResult(d) {
     const g = d && d.ryg_grid;
     let v = '';
-    if (g && Array.isArray(g.not_guaranteed)) {
+    // The verdict is the week rule (net 2+ on 5 of 7 days). Green on YES; on a
+    // hedge, Red when fewer than 3 days clear, else Yellow, so the field still
+    // says how far off the week was.
+    if (d && d.week_rule && d.decision) {
+      const worst = Math.min(...(d.week_rule.per_shift || []).map(s => s.days_clear), 7);
+      v = d.decision === 'YES' ? 'Green' : (worst < 3 ? 'Red (Hard Hedge)' : 'Yellow (Light Hedge)');
+    } else if (g && Array.isArray(g.not_guaranteed)) {
       v = !g.not_guaranteed.length ? 'Green' : (g.not_guaranteed.some(x => x.color === 'red') ? 'Red (Hard Hedge)' : 'Yellow (Light Hedge)');
     } else if (d && d.decision) { v = d.decision === 'YES' ? 'Green' : 'Yellow (Light Hedge)'; }
     if (v) setSelectVal('d_avail_result', v);
@@ -1448,7 +1454,14 @@
       if (greens.length) confirm.push(rowLabel(row.row) + ': ' + greens.join(', '));
       if (notg.length) hedge.push(rowLabel(row.row) + ': ' + notg.join(', '));
     }
-    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ Hedge — let me confirm a few days')+'</div>';
+    let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ Hedge — confirm with the team')+'</div>';
+    // The rule, in one line, with the week it read: net surplus of 2+ on 5 of 7 days.
+    if (d.week_rule && d.week_rule.per_shift && d.week_rule.per_shift.length) {
+      const wr = d.week_rule;
+      const parts = wr.per_shift.map(s => rowLabel(s.row) + ': ' + s.days_clear + ' of 7 days with ' + wr.min_net + '+ net' + (s.days.length && s.days.length < 7 ? ' (' + s.days.join(', ') + ')' : ''));
+      h += '<div class="muted" style="margin:6px 0 10px;font-size:13px">Rule: ' + wr.min_net + '+ net surplus on at least ' + wr.needed_days + ' of 7 days within ' + (d.radius_miles || 30) + ' driving miles. ' + parts.map(esc).join(' · ') + '.</div>';
+      if (d.heads_up) h += '<div class="notg" style="margin-bottom:10px"><b>Heads up for Scheduling</b>' + esc(d.heads_up) + '. Not a hedge: the week clears.</div>';
+    }
     h += '<div class="answer"><div class="lab">The answer</div><div id="answerBox" class="abx"><span class="think">Summarizing…</span></div></div>';
     if (confirm.length) h += '<div class="ok">✅ <b>Confirm now</b> — ' + confirm.map(esc).join(' · ') + '</div>';
     if (hedge.length) h += '<div class="notg"><b>⚠️ Confirm with my team' + (confirm.length ? '' : ' — the whole case') + '</b> — ' + hedge.map(esc).join(' · ') + '</div>';
