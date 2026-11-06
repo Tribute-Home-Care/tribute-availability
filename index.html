@@ -448,7 +448,7 @@
       <div><label>Deal name</label><input type="text" id="d_dealname" autocomplete="off" /></div>
       <div><label>Service level</label><select id="d_service_level">
         <option value="">—</option><option value="A">A (120+ hrs)</option><option value="B">B (61-119 hrs)</option><option value="C">C (24-60 hrs)</option><option value="D">D (1-23 hrs)</option><option value="Live-In">Live-In</option>
-      </select></div>
+      </select><span class="muted" id="d_level_basis"></span></div>
       <div><label>Hours of service per visit</label><select id="d_hours">
         <option value="">—</option><option value="5">LH 4 (24 hrs)</option><option value="4">LH 3 (12-23 hrs)</option><option value="3">LH 2 (9-11 hrs)</option><option value="2">LH 1 (5-8 hrs)</option><option value="1">SH (1-4 hrs)</option><option value="Live-in">Live-in</option>
       </select></div>
@@ -897,7 +897,8 @@
   }
   function resetLeadForm() {
     const card = document.getElementById('dealCard');
-    amountManual = false; const _b = basisEl(); if (_b) _b.textContent = '';
+    amountManual = false; levelManual = false; const _b = basisEl(); if (_b) _b.textContent = '';
+    { const ln = document.getElementById('d_level_basis'); if (ln) ln.textContent = ''; }
     card.querySelectorAll('input[type=text],input[type=date],textarea').forEach(el => { el.value = ''; el.style.borderColor = ''; });
     ['d_lead_taken_by', 'd_deal_owner'].forEach(id => setOwnerVal(id, ''));   // clear hidden owner ids too
     card.querySelectorAll('select').forEach(el => { el.value = (el.id === 'd_dealtype') ? 'newbusiness' : (el.id === 'd_stage') ? 'qualifiedtobuy' : ''; });
@@ -1046,7 +1047,7 @@
   function setInputVal(id, v) { if (v == null || v === '') return; const el = document.getElementById(id); if (el) el.value = v; }
 
   function fillFromParse(p) {
-    amountManual = false;   // fresh lead — let the estimate populate before any manual edit
+    amountManual = false; levelManual = false;   // fresh lead — let the estimate populate before any manual edit
     const a = p.availability || {}, f = p.fields || {};
     setSegVal('coverage', 'coverage', a.coverage, syncCoverage);
     setSegVal('day_length', 'day_length', a.day_length);
@@ -1121,7 +1122,38 @@
   let amountManual = false;
   const basisEl = () => document.getElementById('d_amount_basis');
   // Auto-estimate the weekly amount from market + per-visit hours (× days/week), via the Lead Desk rate card.
+  // Service level follows the schedule: hours per visit x visits per week (or
+  // the custom weekly hours, or 168 for 24/7). The AI note reader used to guess
+  // the level on its own and nothing checked it, so vague notes ("hours TBD")
+  // went to HubSpot as Level D on what was really a B (Courtney, 11/6).
+  // A level the rep picks by hand is kept; a mismatch only shows a warning.
+  let levelManual = false;
+  function weeklyHoursEstimate() {
+    const hrs = dval('d_hours');
+    if (String(hrs).toLowerCase() === 'live-in' || state.coverage === 'Live-in') return { livein: true };
+    let wk = parseFloat(dval('d_weekly_hours'));
+    if (!(wk > 0) && state.coverage === '24/7') wk = 168;
+    if (wk > 0) return { wk };
+    const REP = { '5': 24, '4': 12, '3': 10, '2': 6, '1': 3 }, h = REP[String(hrs)];
+    if (!h) return null;
+    const vpw = parseInt(dval('d_visits_per_week'), 10);
+    const days = vpw > 0 ? vpw : ((state.recurrence === 'weekly') ? 7 : (state.days && state.days.size ? state.days.size : 7));
+    return { wk: h * days };
+  }
+  function syncLevel() {
+    const el = document.getElementById('d_service_level'), note = document.getElementById('d_level_basis');
+    if (!el) return;
+    const e = weeklyHoursEstimate();
+    if (!e) { if (note) note.textContent = ''; return; }
+    const lvl = e.livein ? 'Live-In' : e.wk >= 120 ? 'A' : e.wk >= 61 ? 'B' : e.wk >= 24 ? 'C' : 'D';
+    const why = e.livein ? 'Live-in schedule' : ('About ' + Math.round(e.wk) + ' hrs/week');
+    if (!levelManual || !el.value) { el.value = lvl; el.style.borderColor = ''; if (note) note.textContent = why + ', so Level ' + lvl + '.'; return; }
+    if (el.value === lvl) { el.style.borderColor = ''; if (note) note.textContent = why + ', so Level ' + lvl + '.'; return; }
+    el.style.borderColor = '#B45309';
+    if (note) note.innerHTML = '<span style="color:#B45309">⚠ ' + why + ' is Level ' + lvl + ', not ' + el.value + '. Check hours per visit and visits per week.</span>';
+  }
   function autoFillAmount(refHint) {
+    syncLevel();
     const b = basisEl();
     if (amountManual) { if (b) b.textContent = 'Manual amount — kept as entered (won’t be auto-recalculated).'; return; }
     const market = dval('d_market_region'), hrs = dval('d_hours');
@@ -1804,6 +1836,8 @@
   document.getElementById('d_stage').onchange = syncStage;
   document.getElementById('d_market_region').onchange = autoFillAmount;
   document.getElementById('d_hours').onchange = autoFillAmount;
+  ['coverage', 'days', 'recurrence'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('click', () => setTimeout(syncLevel, 0)); });
+  document.getElementById('d_service_level').addEventListener('change', () => { levelManual = true; syncLevel(); });
   document.getElementById('d_weekly_hours').oninput = autoFillAmount;
   document.getElementById('d_visits_per_week').oninput = autoFillAmount;
   document.getElementById('d_referred_by').addEventListener('input', () => autoFillAmount());
