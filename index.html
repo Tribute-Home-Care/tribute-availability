@@ -2070,7 +2070,8 @@
         <label>Email message to the client</label>
         <textarea id="ldBody" rows="4">${body}</textarea>
         <div style="display:flex;gap:12px;align-items:center;margin-top:18px">
-          <button type="button" class="go" style="width:auto;margin:0" onclick="LD.gen()">Generate DocuSign draft</button>
+          <button type="button" class="go" style="width:auto;margin:0" onclick="LD.gen(true)" title="Creates the CSA and emails it to the signer right away. You'll confirm the details first.">Generate &amp; send</button>
+          <button type="button" class="toggle" style="margin:0" onclick="LD.gen()" title="Creates a draft in your DocuSign to review before sending.">Draft only</button>
           <button type="button" class="toggle" style="margin:0" onclick="LD.close()">Back to queue</button>
           <button type="button" class="toggle" style="margin:0" onclick="LD.mark('sent')" title="The CSA already went out another way. Removes this lead from the queue.">Already sent</button>
           <button type="button" class="toggle" style="margin:0" onclick="LD.mark('dismissed')" title="This lead does not need a CSA. Removes it from the queue.">No CSA needed</button>
@@ -2088,7 +2089,7 @@
       catch(e){ parsed=parseSchedule(txt, DEALS[cur].hpd); parsed.aiNote='Couldn’t reach the AI reader, so this is a basic read. Check every day and edit the grid directly.'; }
       if(btn){ btn.disabled=false; btn.textContent='Apply'; }
       renderGrid(); updateNote(); }
-    async function gen(){
+    async function gen(sendNow){
       const d=DEALS[cur], t=$('ldTmpl').value;
       const clientName=$('ldClientName').value.trim(), clientEmail=$('ldClientEmail').value.trim();
       const isRep=$('ldSignWho').value==='rep', signerName=isRep?$('ldSignerName').value.trim():clientName, signerRel=isRep?$('ldSignerRel').value.trim():'';
@@ -2102,13 +2103,20 @@
       });
       pf['WeeklyTotal']='$'+Math.round(total).toLocaleString();
       pf['ClientName']=clientName;   // client name is now a prefill field, filled from the tool
-      $('ldGen').textContent='Generating…';
+      if(sendNow){
+        const sd=$('ldStartDate').value, sdTxt=sd?new Date(sd+'T12:00:00').toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'numeric'}):'(none)';
+        const msg='Send the CSA now?\n\nSigner: '+signerName+(isRep&&signerRel?' ('+signerRel+')':'')+'\nEmail: '+clientEmail+'\nClient: '+clientName+'\nStart of care: '+sdTxt+'\nWeekly total: $'+Math.round(total).toLocaleString()+'\n\nIt goes out from DocuSign right away.';
+        if(!confirm(msg)) return;
+      }
+      $('ldGen').textContent=sendNow?'Generating and sending…':'Generating…';
       try{
         const r=await _authFetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({dealId:d.id, template:t, clientName, clientEmail, signerName, signerRelationship:signerRel, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:false})});
+          body:JSON.stringify({dealId:d.id, template:t, clientName, clientEmail, signerName, signerRelationship:signerRel, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:!!sendNow})});
         const j=await r.json().catch(()=>({}));
         if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML=j.reason==='expired'?'Your DocuSign login expired. Sign in again in the window that just opened, then click Generate again.':'Connect DocuSign (top-right) first.'; dsWhoami(); dsConnect(); return; }
         if(!j.ok){ $('ldGen').innerHTML='<span style="color:var(--danger)">Error: '+(j.error||'failed')+(j.detail?(' — '+j.detail):'')+'</span>'; return; }
+        if(sendNow){ d.csa={status:'sent',at:new Date().toISOString(),by:j.sentAs||'',sentAt:new Date().toISOString()};
+          $('ldGen').innerHTML='✅ Sent to <b>'+clientEmail+'</b> from '+(j.sentAs||'your')+' DocuSign.'+(j.advanced?' The deal moved to Contract Sent.':(j.stageKept?' The deal stays at '+j.stageKept+'.':''))+(j.envelopeId?(' · <a href="https://app.docusign.com/documents/details/'+j.envelopeId+'" target="_blank" style="color:var(--teal-d);font-weight:700">View in DocuSign →</a>'):''); return; }
         d.csa={status:'drafted',at:new Date().toISOString(),by:j.sentAs||''};   // stays queued until DocuSign shows it sent
         $('ldGen').innerHTML='✅ Draft created as <b>'+(j.sentAs||'you')+'</b>. Not sent yet: press Send in DocuSign. The deal moves to Contract Sent once it goes out.'+(j.envelopeId?(' · <a href="https://app.docusign.com/documents/details/'+j.envelopeId+'" target="_blank" style="color:var(--teal-d);font-weight:700">Open draft in DocuSign →</a>'):'')+' <span class="muted">(or DocuSign → Agreements → Drafts)</span>'+(j.reviewUrl?(' · <a href="'+j.reviewUrl+'" target="_blank" class="muted">quick review link (works once, within 5 min)</a>'):'');
       }catch(e){ $('ldGen').innerHTML='<span style="color:var(--danger)">'+e.message+'</span>'; }
