@@ -2110,7 +2110,7 @@
         if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML=j.reason==='expired'?'Your DocuSign login expired. Sign in again in the window that just opened, then click Generate again.':'Connect DocuSign (top-right) first.'; dsWhoami(); dsConnect(); return; }
         if(!j.ok){ $('ldGen').innerHTML='<span style="color:var(--danger)">Error: '+(j.error||'failed')+(j.detail?(' — '+j.detail):'')+'</span>'; return; }
         d.csa={status:'drafted',at:new Date().toISOString(),by:j.sentAs||''};   // stays queued until DocuSign shows it sent
-        $('ldGen').innerHTML='✅ Draft created as <b>'+(j.sentAs||'you')+'</b>. Not sent yet: press Send in DocuSign. The deal moves to Contract Sent once it goes out.'+(j.reviewUrl?(' · <a href="'+j.reviewUrl+'" target="_blank" style="color:var(--teal-d);font-weight:700">Review &amp; send in DocuSign →</a>'):'');
+        $('ldGen').innerHTML='✅ Draft created as <b>'+(j.sentAs||'you')+'</b>. Not sent yet: press Send in DocuSign. The deal moves to Contract Sent once it goes out.'+(j.envelopeId?(' · <a href="https://app.docusign.com/documents/details/'+j.envelopeId+'" target="_blank" style="color:var(--teal-d);font-weight:700">Open draft in DocuSign →</a>'):'')+' <span class="muted">(or DocuSign → Agreements → Drafts)</span>'+(j.reviewUrl?(' · <a href="'+j.reviewUrl+'" target="_blank" class="muted">quick review link (works once, within 5 min)</a>'):'');
       }catch(e){ $('ldGen').innerHTML='<span style="color:var(--danger)">'+e.message+'</span>'; }
     }
     async function init(){
