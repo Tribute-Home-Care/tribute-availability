@@ -366,7 +366,7 @@
       <div class="muted" id="coordnote"></div>
 
       <label>Start date</label>
-      <input type="date" id="start_date" value="2026-06-15" />
+      <input type="date" id="start_date" />
 
       <label>Schedule</label>
       <div class="seg" id="recurrence">
@@ -895,9 +895,14 @@
     } else { ans.style.borderColor = ''; }
     return missing;
   }
+  // Start date defaults to today (was hard-coded to 2026-06-15). Local date, not UTC,
+  // so an evening lead doesn't default to tomorrow.
+  function todayLocal() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  { const sd = document.getElementById('start_date'); if (sd && !sd.value) sd.value = todayLocal(); }
   function resetLeadForm() {
     const card = document.getElementById('dealCard');
     amountManual = false; levelManual = false; const _b = basisEl(); if (_b) _b.textContent = '';
+    { const sd = document.getElementById('start_date'); if (sd) sd.value = todayLocal(); }
     { const ln = document.getElementById('d_level_basis'); if (ln) ln.textContent = ''; }
     card.querySelectorAll('input[type=text],input[type=date],textarea').forEach(el => { el.value = ''; el.style.borderColor = ''; });
     ['d_lead_taken_by', 'd_deal_owner'].forEach(id => setOwnerVal(id, ''));   // clear hidden owner ids too
