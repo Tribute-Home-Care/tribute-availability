@@ -1925,7 +1925,9 @@
         Object.keys(map).forEach(k=>{ if(s.includes(k)&&!days.includes(map[k])) days.push(map[k]); });
         const nx=s.match(/(\d)\s*x|\b(\d)\s*(?:days?|times?)\b/); if(!days.length&&nx){ const n=+(nx[1]||nx[2])||3; days=[1,2,3,4,5].slice(0,n); } }
       let visits=[];
-      if(/24\/7/.test(s)){ visits=[{win:"7a-7p",hours:12,set:false},{win:"7p-7a",hours:12,set:false}]; }
+      if(/live[- ]?in|\bli\b/.test(s)){ if(!days.length) days=[0,1,2,3,4,5,6];
+        visits=[{win:"Live-in",hours:24,livein:true,set:false}]; if(/overnight|\bnights?\b/.test(s)) visits.push({win:"7p-7a",hours:12,set:false}); }
+      else if(/24\/7/.test(s)){ visits=[{win:"7a-7p",hours:12,set:false},{win:"7p-7a",hours:12,set:false}]; }
       else {
         const dr=s.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*(?:hrs?|hours?)\b/);
         const d1=s.match(/(\d+(?:\.\d+)?)\s*(?:hrs?|hours?)\b/);
@@ -1948,6 +1950,7 @@
     // "8p-8a" / "9-11a" / "9:30a-1p" / "noon-4p" -> {win,hours}; "6h" -> duration only (time still to set).
     function parseWin(str){ let s=String(str||'').toLowerCase().replace(/\s+/g,'').replace(/noon/g,'12p').replace(/midnight/g,'12a').replace(/\./g,'').replace(/to|until/g,'-');
       if(!s) return null;
+      if(/^(li|livein|live-in|liveins?)$/.test(s)) return {win:'Live-in',hours:24,livein:true,set:false};
       const du=s.match(/^(\d+(?:\.\d+)?)(?:h|hr|hrs|hour|hours)$/); if(du) return {win:'',hours:+du[1],set:true};
       const m=s.match(/^(\d{1,2})(?::(\d{2}))?([ap])?m?[-–](\d{1,2})(?::(\d{2}))?([ap])?m?$/); if(!m) return {win:str,hours:0,bad:true};
       let h1=+m[1]+(m[2]?+m[2]/60:0), h2=+m[4]+(m[5]?+m[5]/60:0); let a1=m[3], a2=m[6];
@@ -1964,7 +1967,7 @@
       const sys='You turn a home care lead-taker\'s plain-English schedule into a weekly visit grid. Reply with ONLY JSON: {"days":{"Sun":[],"Mon":[],"Tue":[],"Wed":[],"Thu":[],"Fri":[],"Sat":[]},"note":""}. '
         +'Each day holds 0-2 visit time windows written like "7a-7p", "8p-8a", "9-11:30a". A visit that runs past midnight belongs to the day it STARTS (Fri 8p-8a goes on Fri). An END time such as "ending Sunday 8am" or "through Sunday at 8a" is when the last overnight finishes: it is NOT a visit on Sunday. Never write a window that starts and ends at the same time (no "8a-8a"). '
         +'"24/7" or "around the clock" with no times means "7a-7p" and "7p-7a" every day; if times are given, use them. If only certain days or dates are named (e.g. a single weekend, "Friday night through Sunday 8am"), fill ONLY those days. '
-        +'Night/overnight with no times given means 7p-7a. Dates: map them to weekdays using ONLY this calendar, never your own date math: '+cal+'. If only a duration is known, write it like "4h". Never invent visits. Use "note" (one short sentence, else "") only for something the grid cannot show, e.g. more than 2 visits in a day. Output plain JSON with normal double quotes, no backslashes, no code fences.';
+        +'Night/overnight with no times given means 7p-7a. Dates: map them to weekdays using ONLY this calendar, never your own date math: '+cal+'. A live-in caregiver (also written "LI" or "live in") is the single word "Live-in" as the FIRST visit of that day, with no times; an overnight or other shift added on top of a live-in goes in the second slot (e.g. "LI + overnights" = ["Live-in","7p-7a"] every day). Never turn a live-in into "7a-7p" or "24/7". If only a duration is known, write it like "4h". Never invent visits. Use "note" (one short sentence, else "") only for something the grid cannot show, e.g. more than 2 visits in a day. Output plain JSON with normal double quotes, no backslashes, no code fences.';
       const out=await callClaude(sys,'Schedule: '+text,600);
       const j=JSON.parse(out.slice(out.indexOf('{'),out.lastIndexOf('}')+1).replace(/\\"/g,'"'));
       const rows=DAYS.map(dn=>{ const arr=((j.days||{})[dn]||[]).slice(0,2).map(w=>{ const p=parseWin(w); return p?{...p,rate:null}:null; }); return [arr[0]||null,arr[1]||null]; });
@@ -1995,15 +1998,17 @@
       }catch(e){ const g=$('ldGen'); if(g&&i===undefined) g.innerHTML='<span style="color:var(--danger)">Could not update: '+e.message+'</span>'; else console.warn('csamark',e); return; }
       if(i===undefined) close(); renderList($('ldSearch').value); }
 
-    const rateOf=(v,t)=>v?(v.rate!=null?v.rate:rateForHours(t,v.hours)):0;
-    const chargeOf=(row,t)=>row.reduce((a,v)=>a+(v&&!v.bad?v.hours*rateOf(v,t):0),0);
+    // Live-in is billed per DAY at the rate card's live-in rate; everything else is hours x hourly rate.
+    const cardRate=(v,t)=>v.livein?((RATECARD[t]||{}).livein||0):rateForHours(t,v.hours);
+    const rateOf=(v,t)=>v?(v.rate!=null?v.rate:cardRate(v,t)):0;
+    const chargeOf=(row,t)=>row.reduce((a,v)=>a+(v&&!v.bad?(v.livein?1:v.hours)*rateOf(v,t):0),0);
     function gridHTML(p,t){ const esc=s=>String(s||'').replace(/"/g,'&quot;');
       const body=DAYS.map((dn,di)=>{ const row=p.rows[di], c=chargeOf(row,t);
-        const cell=(v,k)=>`<input value="${esc(v?v.win:'')}" placeholder="${v&&v.set?'set time':''}" title="${v?v.hours+'h':'e.g. 8a-8p'}"${v&&v.bad?' style="border-color:var(--danger)"':''} onchange="LD.cell(${di},${k},this.value)">`;
-        const rate=(v,k)=>v?`<input id="ldR_${di}_${k}" class="ldrateIn" value="${rateOf(v,t)}" title="Rate card $${rateForHours(t,v.hours)} — type to override, clear to reset"${v.rate!=null?' style="border-color:var(--teal-d);font-weight:700"':''} oninput="LD.rate(${di},${k},this.value)" onchange="LD.rate(${di},${k},this.value,1)">`:'';
+        const cell=(v,k)=>`<input value="${esc(v?v.win:'')}" placeholder="${v&&v.set?'set time':''}" title="${v?(v.livein?'Live-in, billed per day':v.hours+'h'):'e.g. 8a-8p, or Live-in'}"${v&&v.bad?' style="border-color:var(--danger)"':''} onchange="LD.cell(${di},${k},this.value)">`;
+        const rate=(v,k)=>v?`<input id="ldR_${di}_${k}" class="ldrateIn" value="${rateOf(v,t)}" title="Rate card $${cardRate(v,t)}${v.livein?' per day':''} — type to override, clear to reset"${v.rate!=null?' style="border-color:var(--teal-d);font-weight:700"':''} oninput="LD.rate(${di},${k},this.value)" onchange="LD.rate(${di},${k},this.value,1)">`:'';
         return `<tr><td class="day">${dn}</td><td>${cell(row[0],0)}</td><td>${cell(row[1],1)}</td><td>${rate(row[0],0)}</td><td>${rate(row[1],1)}</td><td id="ldC_${di}">${c?'$'+Math.round(c).toLocaleString():''}</td></tr>`;
       }).join("");
-      return `<table class="ldgrid"><thead><tr><th></th><th colspan="2">Hours (time window)</th><th colspan="2">Rate $/hr</th><th>Charge</th></tr>
+      return `<table class="ldgrid"><thead><tr><th></th><th colspan="2">Hours (time window)</th><th colspan="2">Rate $/hr (live-in $/day)</th><th>Charge</th></tr>
         <tr><th></th><th>Visit 1</th><th>Visit 2</th><th>V1</th><th>V2</th><th></th></tr></thead><tbody>${body}</tbody>
         <tfoot><tr><td colspan="5" style="text-align:right;border:none">Weekly Total</td><td class="ldtotal" id="ldTot">$${Math.round(p.rows.reduce((a,r)=>a+chargeOf(r,t),0)).toLocaleString()}</td></tr></tfoot></table>`; }
     function renderGrid(){ $('ldGridWrap').innerHTML=gridHTML(parsed,$('ldTmpl').value); $('ldRate').textContent="Rates: "+rateCardText($('ldTmpl').value)+" · every cell is editable"; }
@@ -2012,7 +2017,8 @@
       parsed.rows.forEach((row,di)=>{ const c=chargeOf(row,t); tot+=c; const el=$('ldC_'+di); if(el) el.textContent=c?'$'+Math.round(c).toLocaleString():''; });
       $('ldTot').textContent='$'+Math.round(tot).toLocaleString(); }
     function cell(di,k,val){ const p=parseWin(val), row=parsed.rows[di];
-      row[k]=p?{...p,rate:row[k]?row[k].rate:null}:null;
+      // Keep a hand-typed rate only while the visit stays the same kind (a $/hr override is not a $/day rate).
+      row[k]=p?{...p,rate:(row[k]&&!!row[k].livein===!!p.livein)?row[k].rate:null}:null;
       renderGrid(); updateNote(); }
     function rate(di,k,val,final){ const v=parsed.rows[di][k]; if(!v) return; const n=parseFloat(String(val).replace(/[$,]/g,''));
       v.rate=(String(val).trim()===''||isNaN(n))?null:n;
@@ -2086,7 +2092,7 @@
       if(parsed.rows.flat().some(v=>v&&v.bad)){ $('ldGen').innerHTML='<span style="color:var(--danger)">Fix the time shown in red first.</span>'; return; }
       const pf={}; let total=0;
       DAYS.forEach((dn,di)=>{ const row=parsed.rows[di], c=chargeOf(row,t); total+=c;
-        row.forEach((v,k)=>{ if(!v) return; pf[dn+'_V'+(k+1)+'H']=v.win||(v.hours+'h'); pf[dn+'_V'+(k+1)+'R']='$'+rateOf(v,t); });
+        row.forEach((v,k)=>{ if(!v) return; pf[dn+'_V'+(k+1)+'H']=v.win||(v.hours+'h'); pf[dn+'_V'+(k+1)+'R']='$'+rateOf(v,t)+(v.livein?'/day':''); });
         if(c) pf[dn+'_CHG']='$'+Math.round(c);
       });
       pf['WeeklyTotal']='$'+Math.round(total).toLocaleString();
