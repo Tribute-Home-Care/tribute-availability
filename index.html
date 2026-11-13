@@ -244,6 +244,19 @@
   table.ldgrid input::placeholder { color:var(--hedge); font-size:11px; }
   table.ldgrid tbody tr:hover td { background:transparent; }
   .ldtotal { font-weight:800; font-size:16px; }
+  .ldtabs { display:flex; gap:6px; margin:0 0 14px; flex-wrap:wrap; }
+  .ldtabs button { font:inherit; font-size:13px; font-weight:600; padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--muted); cursor:pointer; }
+  .ldtabs button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .awrow { display:grid; grid-template-columns:minmax(150px,1.1fr) minmax(170px,1.4fr) minmax(150px,1fr) auto; gap:6px 14px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:12px; margin-bottom:6px; padding:12px 16px; box-shadow:var(--shadow-xs); font-size:13px; }
+  .awrow .nm { font-size:14px; font-weight:600; color:var(--ink); }
+  .awrow .sm { font-size:12px; color:var(--muted); }
+  .awrow .acts { display:flex; gap:6px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+  .awrow .acts a { font-size:12px; color:var(--teal-d); font-weight:600; text-decoration:none; }
+  .awdays { font-size:11.5px; font-weight:700; border-radius:999px; padding:2px 9px; white-space:nowrap; background:var(--secondary); color:var(--muted); border:1px solid var(--line); }
+  .awdays.amber { background:var(--hedge-bg); color:var(--hedge); border-color:var(--hedge-line); }
+  .awdays.red { background:var(--danger-bg); color:var(--danger); border-color:var(--danger-line); }
+  .awh { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:18px 0 8px; }
+  @media (max-width:720px){ .awrow { grid-template-columns:1fr; } .awrow .acts { justify-content:flex-start; } }
   .ldnote { font-size:13px; color:var(--hedge); background:var(--hedge-bg); border:1px solid var(--hedge-line); border-radius:9px; padding:8px 11px; margin:10px 0; }
   .ldtimebox { display:flex; gap:8px; }
 
@@ -572,6 +585,12 @@
   <div id="view-leaddesk" class="hide">
     <p class="sub">Qualified leads → generate the Client Service Agreement.
       <span class="muted" style="font-size:12px">· loaded live from HubSpot; sent as you via DocuSign.</span></p>
+    <div class="ldtabs" id="ldTabs"><button type="button" class="on" id="ldTabQ" onclick="LD.tab('q')">Needs a CSA</button><button type="button" id="ldTabW" onclick="LD.tab('w')">Waiting on signature</button></div>
+    <div id="ldAwait" class="hide">
+      <div class="ldbar"><h2>Waiting on signature</h2><span class="ldcount" id="awCount"></span>
+        <span class="muted" style="font-size:12px">Every CSA that's out, whoever sent it. Drops off once signed (it files itself into Viv and emails the CSM).</span></div>
+      <div id="awList"></div>
+    </div>
     <div id="ldQueue">
       <div class="ldbar"><h2>Qualified — awaiting CSA</h2><span class="ldcount" id="ldCount"></span>
         <input type="text" class="ldsearch" id="ldSearch" placeholder="Search name / market…" /></div>
@@ -2111,19 +2130,67 @@
       $('ldGen').textContent=sendNow?'Generating and sending…':'Generating…';
       try{
         const r=await _authFetch(HS_BASE+'/csagenerate?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({dealId:d.id, template:t, clientName, clientEmail, signerName, signerRelationship:signerRel, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:!!sendNow})});
+          body:JSON.stringify({dealId:d.id, market:d.market||'', template:t, clientName, clientEmail, signerName, signerRelationship:signerRel, emailSubject:$('ldSubject').value, emailBlurb:$('ldBody').value, prefill:pf, send:!!sendNow})});
         const j=await r.json().catch(()=>({}));
         if(j.error==='docusign_not_connected'){ $('ldGen').innerHTML=j.reason==='expired'?'Your DocuSign login expired. Sign in again in the window that just opened, then click Generate again.':'Connect DocuSign (top-right) first.'; dsWhoami(); dsConnect(); return; }
         if(!j.ok){ $('ldGen').innerHTML='<span style="color:var(--danger)">Error: '+(j.error||'failed')+(j.detail?(' — '+j.detail):'')+'</span>'; return; }
+        if(sendNow&&j.sendFailed){ d.csa={status:'drafted',at:new Date().toISOString(),by:j.sentAs||''};
+          $('ldGen').innerHTML='<span style="color:var(--danger)">DocuSign did not send it: '+awEsc(j.sendError||'unknown reason')+'.</span> It was saved as a draft instead.'+(j.envelopeId?(' · <a href="https://app.docusign.com/documents/details/'+j.envelopeId+'" target="_blank" style="color:var(--teal-d);font-weight:700">Open draft in DocuSign →</a>'):''); return; }
         if(sendNow){ d.csa={status:'sent',at:new Date().toISOString(),by:j.sentAs||'',sentAt:new Date().toISOString()};
           $('ldGen').innerHTML='✅ Sent to <b>'+clientEmail+'</b> from '+(j.sentAs||'your')+' DocuSign.'+(j.advanced?' The deal moved to Contract Sent.':(j.stageKept?' The deal stays at '+j.stageKept+'.':''))+(j.envelopeId?(' · <a href="https://app.docusign.com/documents/details/'+j.envelopeId+'" target="_blank" style="color:var(--teal-d);font-weight:700">View in DocuSign →</a>'):''); return; }
         d.csa={status:'drafted',at:new Date().toISOString(),by:j.sentAs||''};   // stays queued until DocuSign shows it sent
         $('ldGen').innerHTML='✅ Draft created as <b>'+(j.sentAs||'you')+'</b>. Not sent yet: press Send in DocuSign. The deal moves to Contract Sent once it goes out.'+(j.envelopeId?(' · <a href="https://app.docusign.com/documents/details/'+j.envelopeId+'" target="_blank" style="color:var(--teal-d);font-weight:700">Open draft in DocuSign →</a>'):'')+' <span class="muted">(or DocuSign → Agreements → Drafts)</span>'+(j.reviewUrl?(' · <a href="'+j.reviewUrl+'" target="_blank" class="muted">quick review link (works once, within 5 min)</a>'):'');
       }catch(e){ $('ldGen').innerHTML='<span style="color:var(--danger)">'+e.message+'</span>'; }
     }
+    // ---- Waiting on signature ----
+    let AW=[], tabNow='q';
+    function tab(t){ tabNow=t; $('ldTabQ').classList.toggle('on',t==='q'); $('ldTabW').classList.toggle('on',t==='w');
+      $('ldAwait').classList.toggle('hide',t!=='w'); $('ldQueue').classList.toggle('hide',t!=='q'); $('ldDetail').classList.add('hide');
+      if(t==='w') loadAwait(); }
+    const awEsc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const awDate=iso=>iso?new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric'}):'';
+    function awClient(r){ if(r.clientName) return r.clientName; const m=/^(.*?)\s+[\u2013\u2014-]\s+Tribute/i.exec(r.subject||''); return (m?m[1]:(r.signerName||r.subject||'CSA')).trim(); }
+    async function loadAwait(){
+      $('awList').innerHTML='<div class="muted" style="padding:12px">Loading…</div>'; $('awCount').textContent='';
+      try{ const r=await _authFetch(HS_BASE+'/csaawaiting'); const j=await r.json();
+        if(!r.ok) throw new Error(j.error||('HTTP '+r.status)); AW=j.items||[]; }
+      catch(e){ $('awList').innerHTML='<div class="ldnote">Could not load: '+awEsc(e.message)+'</div>'; return; }
+      renderAwait(); }
+    function renderAwait(){
+      const open=AW.filter(r=>r.status==='sent'||r.status==='opened'), done=AW.filter(r=>!(r.status==='sent'||r.status==='opened')).reverse();
+      $('ldTabW').textContent='Waiting on signature'+(open.length?' ('+open.length+')':'');
+      $('awCount').textContent=open.length+' out';
+      const row=r=>{ const isOpen=r.status==='sent'||r.status==='opened';
+        const days=Math.floor((Date.now()-Date.parse(r.sentAt||r.firstSeen))/864e5);
+        const dcls=days>=5?'red':(days>=2?'amber':'');
+        const st={sent:'Sent, not opened yet',opened:'Opened'+(r.openedAt?' '+awDate(r.openedAt):''),signed:'✅ Signed '+awDate(r.statusAt),declined:'❌ Declined '+awDate(r.statusAt),voided:'Voided '+awDate(r.statusAt)+(r.voidedReason?': '+awEsc(r.voidedReason):'')}[r.status]||r.status;
+        const csm=r.csm?(r.csm==='none'?'No CSM set in Viv':'CSM: '+awEsc(r.csm)):(r.dealId?'Not in Viv yet':'');
+        return `<div class="awrow"${isOpen?'':' style="opacity:.7"'}>
+          <div><div class="nm">${awEsc(awClient(r))}</div><div class="sm">${[r.market?awEsc(MARKET_LABEL[r.market]||r.market):'',csm].filter(Boolean).join(' · ')}</div></div>
+          <div><div>To <b>${awEsc(r.signerName||'')}</b>${r.relationship?' ('+awEsc(r.relationship)+')':''}</div><div class="sm">${awEsc(r.signerEmail||'')}</div>
+            ${r.bounced?'<div class="sm" style="color:var(--danger);font-weight:600">⚠ Email bounced: check the address and resend from DocuSign</div>':''}</div>
+          <div><div>${st}</div><div class="sm">Sent by ${awEsc(r.sentBy||'?')} · ${awDate(r.sentAt)}${r.remindedAt?' · reminded '+awDate(r.remindedAt)+(r.remindedBy?' by '+awEsc(r.remindedBy):''):''}</div></div>
+          <div class="acts">${isOpen?`<span class="awdays ${dcls}">${days<1?'today':days+(days===1?' day':' days')}</span>`:''}
+            ${isOpen?`<button type="button" class="toggle" style="margin:0;padding:4px 11px;font-size:12px" onclick="LD.remind('${awEsc(r.envelopeId)}',this)">Remind</button>`:''}
+            <a href="https://app.docusign.com/documents/details/${awEsc(r.envelopeId)}" target="_blank" rel="noopener">DocuSign →</a></div></div>`; };
+      $('awList').innerHTML=(open.length?open.map(row).join(''):'<div class="muted" style="padding:12px">Nothing waiting on a signature right now.</div>')
+        +(done.length?'<div class="awh">Finished in the last week</div>'+done.map(row).join(''):''); }
+    async function remind(id,btn){ const r0=AW.find(x=>x.envelopeId===id); if(!r0) return;
+      if(!confirm('Send '+(r0.signerName||'the signer')+' ('+(r0.signerEmail||'')+') a reminder from DocuSign?')) return;
+      btn.disabled=true; btn.textContent='Sending…';
+      try{ const r=await _authFetch(HS_BASE+'/csaremind?sid='+encodeURIComponent(hsSid()),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({envelopeId:id})});
+        const j=await r.json().catch(()=>({}));
+        if(j.ok){ r0.remindedAt=j.remindedAt; r0.remindedBy=j.remindedBy; renderAwait(); return; }
+        btn.disabled=false; btn.textContent='Remind';
+        const msg=j.error==='recently_reminded'?'Already reminded '+awDate(j.remindedAt)+(j.remindedBy?' by '+j.remindedBy:'')+' in the last hour.'
+          :j.error==='no_access'?('DocuSign would not let your login resend this one. Connect DocuSign (top-right) and try again, or ask '+(j.sentBy||'the sender')+' to resend it from DocuSign.')
+          :'Could not send the reminder: '+(j.error||'failed');
+        alert(msg); }
+      catch(e){ btn.disabled=false; btn.textContent='Remind'; alert(e.message); } }
     async function init(){
+      loadAwaitCount();
       if(!listenerAttached){ $('ldSearch').addEventListener('input', e=>renderList(e.target.value)); listenerAttached=true; }
-      $('ldDetail').classList.add('hide'); $('ldQueue').classList.remove('hide');
+      $('ldDetail').classList.add('hide'); tab(tabNow);
       $('ldList').innerHTML='<div class="muted" style="padding:12px">Loading qualified leads…</div>'; $('ldCount').textContent='';
       try{
         const r=await _authFetch(HS_BASE+'/csaqueue?sid='+encodeURIComponent(hsSid()));
@@ -2132,7 +2199,9 @@
       }catch(e){ $('ldList').innerHTML='<div class="ldnote">Could not load leads: '+e.message+'</div>'; return; }
       renderList('');
     }
-    return {init, open, close, apply, grid:renderGrid, cell, rate, gen, refreshBody, estimateWeekly, mark, toggleRemoved, signWho};
+    async function loadAwaitCount(){ try{ const r=await _authFetch(HS_BASE+'/csaawaiting'); if(!r.ok) return; const j=await r.json(); AW=j.items||[];
+      const n=AW.filter(x=>x.status==='sent'||x.status==='opened').length; $('ldTabW').textContent='Waiting on signature'+(n?' ('+n+')':''); }catch(e){} }
+    return {init, tab, remind, open, close, apply, grid:renderGrid, cell, rate, gen, refreshBody, estimateWeekly, mark, toggleRemoved, signWho};
   })();
 </script>
 </body>
