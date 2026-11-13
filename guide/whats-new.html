@@ -79,9 +79,11 @@ footer{max-width:1100px;margin:0 auto;padding:24px 30px 60px;color:var(--muted);
 .l-a{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-line)}
 .l-r{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-line)}
 code{font-family:var(--display);font-size:13px;background:var(--secondary);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+html.embed header.top{display:none}html.embed nav.toc{top:16px}html.embed .layout{padding-top:20px}
 </style>
 </head>
 <body>
+<script>if(/[?&]embed=1/.test(location.search)){document.documentElement.classList.add("embed");document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href$='.html']");if(a&&!a.target){e.preventDefault();location.href=a.getAttribute("href")+"?embed=1";}});}</script>
 <header class="top">
   <div class="dot">T</div>
   <div><h1>Tribute<span class="pt">.</span></h1><div class="sub">Lead Taker · What's New · November 2026</div></div>

@@ -55,6 +55,8 @@
   .tabs .tab:hover { color:var(--ink); }
 
   #view-intake, #view-leaddesk { padding:30px 34px 72px; max-width:960px; margin:0 auto; animation:fadeIn 0.18s ease; }
+  #view-guide { padding:22px 34px 40px; max-width:1180px; margin:0 auto; animation:fadeIn 0.18s ease; }
+  @media (max-width:720px){ #view-guide { padding:16px max(16px, env(safe-area-inset-left, 0px)) 30px; } }
   @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 
   /* ---- alert banner ---- */
@@ -244,6 +246,9 @@
   table.ldgrid input::placeholder { color:var(--hedge); font-size:11px; }
   table.ldgrid tbody tr:hover td { background:transparent; }
   .ldtotal { font-weight:800; font-size:16px; }
+  .newtag { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-d); background:var(--brand-bg); border-radius:999px; padding:1px 7px; margin-left:4px; vertical-align:1px; }
+  #view-guide .gdbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  #view-guide iframe { width:100%; height:calc(100vh - 190px); min-height:520px; border:1px solid var(--line); border-radius:16px; background:#fff; display:block; }
   .ldtabs { display:flex; gap:6px; margin:0 0 14px; flex-wrap:wrap; }
   .ldtabs button { font:inherit; font-size:13px; font-weight:600; padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--muted); cursor:pointer; }
   .ldtabs button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
@@ -327,6 +332,7 @@
   <nav class="tabs">
     <button class="tab on" data-view="intake" type="button">New Lead</button>
     <button class="tab" data-view="leaddesk" type="button">Lead Desk · CSAs</button>
+    <button class="tab" data-view="guide" type="button" style="margin-left:auto">Guide <span class="newtag">New</span></button>
   </nav>
 
   <div id="view-intake">
@@ -581,6 +587,15 @@
     </div>
   </div>
   </div><!-- /view-intake -->
+
+  <div id="view-guide" class="hide">
+    <div class="gdbar ldtabs" style="margin:0 0 12px">
+      <button type="button" class="on" id="gdNew" onclick="showGuide('whats-new.html')">What's new</button>
+      <button type="button" id="gdFull" onclick="showGuide('index.html')">Full user guide</button>
+      <a href="guide/whats-new.html" id="gdOpen" target="_blank" rel="noopener" style="margin-left:auto;font-size:12.5px;font-weight:600;color:var(--teal-d)">Open in a new tab ↗</a>
+    </div>
+    <iframe id="gdFrame" title="Lead Taker Tool guide"></iframe>
+  </div>
 
   <div id="view-leaddesk" class="hide">
     <p class="sub">Qualified leads → generate the Client Service Agreement.
@@ -1878,8 +1893,17 @@
     const v = b.dataset.view;
     document.getElementById('view-intake').classList.toggle('hide', v !== 'intake');
     document.getElementById('view-leaddesk').classList.toggle('hide', v !== 'leaddesk');
+    document.getElementById('view-guide').classList.toggle('hide', v !== 'guide');
     if (v === 'leaddesk') LD.init();
+    if (v === 'guide' && !document.getElementById('gdFrame').src) showGuide('whats-new.html');
   }));
+  // Guide tab: the user guide pages, embedded (same site, same Microsoft sign-in).
+  function showGuide(page) {
+    document.getElementById('gdFrame').src = 'guide/' + page + '?embed=1';
+    document.getElementById('gdOpen').href = 'guide/' + page;
+    document.getElementById('gdNew').classList.toggle('on', page === 'whats-new.html');
+    document.getElementById('gdFull').classList.toggle('on', page === 'index.html');
+  }
 
   // ===== Lead Desk (CSA queue) =====
   window.LD = (function () {

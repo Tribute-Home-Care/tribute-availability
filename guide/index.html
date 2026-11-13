@@ -66,9 +66,11 @@ kbd{font-family:var(--display);font-size:12px;background:var(--secondary);border
 .divider{height:1px;background:var(--line2);margin:26px 0}
 footer{max-width:1100px;margin:0 auto;padding:24px 30px 60px;color:var(--muted);font-size:13px;font-style:italic;border-top:1px solid var(--line)}
 @media(max-width:820px){.layout{grid-template-columns:1fr;gap:0}nav.toc{display:none}}
+html.embed header.top{display:none}html.embed nav.toc{top:16px}html.embed .layout{padding-top:20px}
 </style>
 </head>
 <body>
+<script>if(/[?&]embed=1/.test(location.search)){document.documentElement.classList.add("embed");document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href$='.html']");if(a&&!a.target){e.preventDefault();location.href=a.getAttribute("href")+"?embed=1";}});}</script>
 <header class="top">
   <div class="dot">T</div>
   <div><h1>Tribute<span class="pt">.</span></h1><div class="sub">Lead Taker · User Guide</div></div>
