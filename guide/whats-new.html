@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lead Taker Tool · What's New (Nov 2026)</title>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
+<script src="../entra-auth.js?v=2026-07-07c"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+:root{
+  --ink:#1C1A17; --ink2:#3A362F; --muted:#8C857B; --hint:#B7B0A6;
+  --line:#EAE6DF; --line2:#F1EEE8; --canvas:#FAF8F4; --surface:#FFFFFF; --secondary:#F6F3EE;
+  --brand:#FF5A1F; --brand-d:#E25309; --brand-bg:#FBEADF;
+  --yes:#0F6E56; --yes-bg:#E2F2EC; --yes-line:#BFE3D6;
+  --amber:#92580B; --amber-bg:#F8EEDB; --amber-line:#EAD9AE;
+  --danger:#A4271E; --danger-bg:#F8E5E2; --danger-line:#EFC9C3;
+  --blue:#3B72B8; --blue-bg:#E8EFF7;
+  --shadow-card:0 1px 2px rgba(28,26,23,.04), 0 5px 18px rgba(28,26,23,.045);
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --display:'Space Grotesk','Inter',sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--font);background:var(--canvas);color:var(--ink);letter-spacing:-.005em;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--brand-d);text-decoration:none}
+header.top{position:sticky;top:0;z-index:50;background:rgba(250,248,244,.85);backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:13px;padding:14px 30px}
+header.top .dot{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand-d));display:grid;place-items:center;color:#fff;font-weight:700;font-family:var(--display);box-shadow:0 4px 12px rgba(255,90,31,.30)}
+header.top h1{font-family:var(--display);font-size:17px;font-weight:600;margin:0;letter-spacing:-.02em}
+header.top h1 .pt{color:var(--brand)}
+header.top .sub{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.18em;color:var(--hint);margin-top:1px}
+.layout{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:230px 1fr;gap:38px;padding:34px 30px 90px}
+nav.toc{position:sticky;top:92px;align-self:start;font-size:13.5px}
+nav.toc .grp{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--hint);margin:18px 0 8px}
+nav.toc a{display:block;color:var(--ink2);padding:5px 10px;border-radius:8px;font-weight:500}
+nav.toc a:hover{background:var(--secondary);color:var(--ink)}
+nav.toc a.sub{padding-left:20px;font-size:12.5px;color:var(--muted)}
+main{min-width:0}
+.hero{background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow-card);padding:34px 34px 30px;margin-bottom:34px}
+.hero h2{font-family:var(--display);font-size:30px;font-weight:600;letter-spacing:-.025em;margin:0 0 8px;line-height:1.15}
+.hero p{font-size:15.5px;color:var(--ink2);margin:0 0 6px;max-width:60ch}
+.hero .pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.hero .pill{font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;background:var(--brand-bg);color:var(--brand-d);border:1px solid #F3D9C6}
+section{margin-bottom:44px;scroll-margin-top:92px}
+.secnum{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--ink);color:#fff;font-family:var(--display);font-weight:700;font-size:14px;margin-right:11px;vertical-align:middle}
+h3.sec{font-family:var(--display);font-size:23px;font-weight:600;letter-spacing:-.02em;margin:0 0 14px;display:flex;align-items:center}
+h4.step{font-family:var(--display);font-size:18px;font-weight:600;letter-spacing:-.015em;margin:30px 0 10px;color:var(--ink)}
+h4.step .n{color:var(--brand);font-family:var(--display)}
+p{margin:0 0 13px;color:var(--ink2)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow-card);padding:22px 24px;margin:16px 0}
+figure{margin:18px 0}
+figure img{width:100%;border-radius:14px;border:1px solid var(--line);box-shadow:var(--shadow-card);display:block}
+figcaption{font-size:12.5px;color:var(--muted);margin-top:9px;text-align:center;font-style:italic}
+ul,ol{margin:0 0 14px;padding-left:22px;color:var(--ink2)}
+li{margin:6px 0}
+strong{color:var(--ink);font-weight:600}
+.callout{border-radius:14px;padding:14px 17px;margin:16px 0;font-size:14px;display:flex;gap:11px;align-items:flex-start;border:1px solid}
+.callout .ic{font-size:16px;line-height:1.4;flex:none}
+.tip{background:var(--yes-bg);border-color:var(--yes-line);color:#14503f}
+.tip strong{color:#0d3d2f}
+.warn{background:var(--amber-bg);border-color:var(--amber-line);color:#6a4208}
+.warn strong{color:#523207}
+.info{background:var(--blue-bg);border-color:#CBDDF0;color:#274d78}
+.info strong{color:#1d3c5e}
+kbd{font-family:var(--display);font-size:12px;background:var(--secondary);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px}
+.divider{height:1px;background:var(--line2);margin:26px 0}
+footer{max-width:1100px;margin:0 auto;padding:24px 30px 60px;color:var(--muted);font-size:13px;font-style:italic;border-top:1px solid var(--line)}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:0}nav.toc{display:none}}
+.shot{margin:18px 0}
+.shot img{width:100%;border-radius:14px;border:1px solid var(--line);box-shadow:var(--shadow-card);display:block}
+.shot.narrow img{max-width:640px}
+.who{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);background:var(--secondary);border:1px solid var(--line);border-radius:999px;padding:2px 10px;margin-bottom:10px}
+.steps{counter-reset:s;list-style:none;padding-left:0}
+.steps li{counter-increment:s;position:relative;padding-left:34px;margin:10px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:22px;height:22px;border-radius:7px;background:var(--brand-bg);color:var(--brand-d);font-family:var(--display);font-weight:700;font-size:12.5px;display:grid;place-items:center}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}
+.legend span{font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;border:1px solid}
+.l-g{background:var(--secondary);color:var(--muted);border-color:var(--line)}
+.l-a{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-line)}
+.l-r{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-line)}
+code{font-family:var(--display);font-size:13px;background:var(--secondary);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="dot">T</div>
+  <div><h1>Tribute<span class="pt">.</span></h1><div class="sub">Lead Taker · What's New · November 2026</div></div>
+</header>
+
+<div class="layout">
+  <nav class="toc">
+    <div class="grp">Sending the CSA</div>
+    <a href="#send">1 · Generate &amp; send</a>
+    <a href="#signer">2 · Who is signing</a>
+    <a href="#waiting">3 · Waiting on signature</a>
+    <a href="#livein">4 · Live-in in the grid</a>
+    <a href="#grid">5 · Grid lines up on the PDF</a>
+    <a href="#closedwon">6 · Closed Won leads</a>
+    <div class="grp">Taking a new lead</div>
+    <a href="#level">7 · Service level</a>
+    <a href="#startdate">8 · Start date</a>
+    <a href="#avail">9 · Availability check</a>
+    <div class="grp">More</div>
+    <a href="index.html">Full user guide</a>
+  </nav>
+
+  <main>
+    <div class="hero">
+      <h2>What's new in the Lead Taker Tool</h2>
+      <p>Changes from November 4 to 13, almost all from your feedback. Most of them are in the <strong>Lead Desk · CSAs</strong> tab. Refresh the tool once to pick everything up.</p>
+      <div class="pills"><span class="pill">One-click send</span><span class="pill">Family / POA signers</span><span class="pill">Waiting on signature</span><span class="pill">Live-in rates</span><span class="pill">Service level fix</span><span class="pill">Better availability answers</span></div>
+    </div>
+    <div class="callout info"><span class="ic">ℹ</span><div>The screenshots use made-up clients and staff. Your screen will show your real leads.</div></div>
+
+    <section id="send">
+      <span class="who">Lead Desk</span>
+      <h3 class="sec"><span class="secnum">1</span>Send the CSA in one click</h3>
+      <p>At the bottom of a lead there are now two ways to create the CSA:</p>
+      <ul>
+        <li><strong>Generate &amp; send</strong> (orange) creates the CSA and DocuSign emails it to the signer right away. Before it goes, a box shows the signer, their email, the client, the start of care and the weekly total so you can check them. Click <strong>OK</strong> to send.</li>
+        <li><strong>Draft only</strong> works the way the tool used to: it saves a draft in your DocuSign so you can look it over and press Send there.</li>
+      </ul>
+      <div class="shot"><img src="new-2026-11/04-sent.png" alt="Generate &amp; send button with a Sent confirmation"></div>
+      <p>When it's sent you'll see <strong>✅ Sent to</strong> the signer's email, and the deal moves to Contract Sent. If DocuSign refuses to send it (for example a missing field), the tool says why and keeps it as a draft instead of saying "Sent".</p>
+      <div class="callout tip"><span class="ic">✓</span><div>If you use <strong>Draft only</strong>, use the <strong>Open draft in DocuSign</strong> link. The old "Review &amp; send" link only worked once and expired after about 5 minutes, which is why some of you got a blank page. Drafts are also always under <strong>DocuSign → Agreements → Drafts</strong>.</div></div>
+    </section>
+
+    <section id="signer">
+      <span class="who">Lead Desk</span>
+      <h3 class="sec"><span class="secnum">2</span>A family member or POA can sign</h3>
+      <p>The CSA used to go out with the client as the signer, even when their son or daughter was signing. Now you choose who signs.</p>
+      <ol class="steps">
+        <li>Under <strong>Recipient &amp; email</strong>, set <strong>Who is signing?</strong> to <strong>Someone on the client's behalf (family, POA)</strong>.</li>
+        <li>Type the signer's <strong>full name</strong> and their <strong>relationship to the client</strong> (for example "son" or "daughter (POA)").</li>
+        <li>Put the <strong>signer's</strong> email in <strong>Send to</strong>.</li>
+      </ol>
+      <div class="shot"><img src="new-2026-11/03-signer.png" alt="Recipient section with a family member set as the signer"></div>
+      <p>The client's own name still prints on page 1 of the CSA. The signed copy still files itself into the right client in Viv.</p>
+    </section>
+
+    <section id="waiting">
+      <span class="who">Lead Desk</span>
+      <h3 class="sec"><span class="secnum">3</span>See every CSA that's waiting on a signature</h3>
+      <p>The Lead Desk now has two tabs: <strong>Needs a CSA</strong> (the queue you know) and <strong>Waiting on signature</strong>. The second one lists every CSA that has gone out and hasn't been signed. Everyone can see it, whoever sent the CSA, and it includes CSAs sent straight from DocuSign.</p>
+      <div class="shot"><img src="new-2026-11/02-waiting.png" alt="Waiting on signature tab with four CSAs out and one signed"></div>
+      <p>Each row shows:</p>
+      <ul>
+        <li><strong>The client</strong>, their market and their <strong>CSM</strong> from Viv. "Not in Viv yet" means the client hasn't been set up in Viv; "No CSM set in Viv" means they're in Viv without a CSM.</li>
+        <li><strong>Who it went to</strong> and their email. A red warning means <strong>the email bounced</strong>: check the address and send it again from DocuSign.</li>
+        <li>Whether the family has <strong>opened</strong> it, and <strong>who sent it and when</strong>.</li>
+        <li><strong>How long it's been waiting</strong>:</li>
+      </ul>
+      <div class="legend"><span class="l-g">0–1 days</span><span class="l-a">2–4 days</span><span class="l-r">5+ days</span></div>
+      <p><strong>Remind</strong> has DocuSign send the signing email again. It can be used once an hour per CSA, and the row shows who sent the last reminder. <strong>DocuSign →</strong> opens the envelope.</p>
+      <div class="callout warn"><span class="ic">!</span><div><strong>Remind works best for the person who sent the CSA.</strong> If DocuSign won't let you remind on someone else's, the tool tells you who sent it so you can ask them.</div></div>
+      <p>A CSA drops off the list once it's signed, or once a newer copy for the same client is signed. Declined and voided CSAs stay under <strong>Finished in the last week</strong> so nothing disappears without anyone noticing. When a CSA is signed, it still files itself into the client's Documents in Viv and emails the CSM (or Courtney when no CSM is set).</p>
+    </section>
+
+    <section id="livein">
+      <span class="who">Lead Desk</span>
+      <h3 class="sec"><span class="secnum">4</span>Live-in in the CSA grid</h3>
+      <p>The grid now understands live-in. In <strong>Specify visit times</strong>, type something like <code>Live-in every day + overnights Fri-Sun</code> or <code>LI + overnights</code> and click <strong>Apply</strong>.</p>
+      <div class="shot"><img src="new-2026-11/05-livein.png" alt="CSA grid with a live-in visit and an overnight visit each day"></div>
+      <ul>
+        <li>A live-in day is charged at the <strong>live-in day rate</strong>, not by the hour. The Rate column shows $/day for live-in and $/hr for everything else.</li>
+        <li>An overnight added on top is charged as its own visit at the hourly rate.</li>
+        <li>If you change a cell between live-in and hourly, the rate and the total update to match.</li>
+      </ul>
+    </section>
+
+    <section id="grid">
+      <span class="who">The CSA document</span>
+      <h3 class="sec"><span class="secnum">5</span>The schedule grid lines up on the CSA</h3>
+      <p>On the Maryland CSAs, every line of the weekly schedule printed one row too low, so Sunday's visits showed on Monday's row. The other CSAs drifted a little toward the bottom of the table. All CSA templates are fixed, so new CSAs line up with the table.</p>
+      <div class="shot narrow"><img src="new-2026-11/08-csa-grid.png" alt="Maryland CSA weekly charges table with every row lined up"></div>
+      <p>CSAs that went out before November 12 keep the old layout. If one of those needs to look right, generate it again and resend it.</p>
+    </section>
+
+    <section id="closedwon">
+      <span class="who">Lead Desk</span>
+      <h3 class="sec"><span class="secnum">6</span>Leads saved straight as Closed Won show up</h3>
+      <p>A lead entered on the form directly as <strong>Closed Won</strong> didn't appear in the queue, so there was no way to send its CSA from the tool. It now appears for 7 days with a green <strong>Closed Won</strong> tag, or until its CSA goes out.</p>
+      <div class="shot"><img src="new-2026-11/01-tabs.png" alt="Needs a CSA queue with a Closed Won lead and a draft not yet sent"></div>
+      <p>Sending a CSA for a Closed Won lead leaves the deal stage alone. A lead whose CSA was only drafted shows an amber <strong>Draft created · not sent yet</strong> tag until it's sent.</p>
+    </section>
+
+    <section id="level">
+      <span class="who">New Lead</span>
+      <h3 class="sec"><span class="secnum">7</span>Service level matches the schedule</h3>
+      <p>Some leads entered as Level B were saved as Level D. The tool was trusting the AI's guess from the notes. Now the service level is worked out from <strong>Hours of service per visit × Visits per week</strong> (or <strong>Weekly hours</strong> when you fill that in), and the reason shows under the box.</p>
+      <div class="shot"><img src="new-2026-11/06-level.png" alt="Service level set to B with the note About 72 hrs/week, so Level B"></div>
+      <div class="legend"><span class="l-g">A: 120+ hrs/week</span><span class="l-g">B: 61–119</span><span class="l-g">C: 24–60</span><span class="l-g">D: under 24</span><span class="l-g">Live-in</span></div>
+      <p>24/7 counts as 168 hours a week. You can still pick a level yourself; if it doesn't match the schedule, an amber note tells you so you can double-check.</p>
+    </section>
+
+    <section id="startdate">
+      <span class="who">New Lead</span>
+      <h3 class="sec"><span class="secnum">8</span>Start date defaults to today</h3>
+      <p>The availability check's <strong>Start date</strong> used to default to June 15. It now starts as today's date, and goes back to today when you clear the form for the next lead.</p>
+    </section>
+
+    <section id="avail">
+      <span class="who">New Lead · Scheduling</span>
+      <h3 class="sec"><span class="secnum">9</span>More accurate availability answers</h3>
+      <p>Two things were making the availability check too optimistic, mostly on long-hour and 24/7 requests:</p>
+      <ul>
+        <li><strong>Short-hour caregivers counted for long-hour days.</strong> The check judged long vs short from how wide a caregiver's availability window was in Viv, so a 7a–8p window looked like a long-hour caregiver even if they only take short visits. It now reads the <strong>availability notes</strong> in Viv instead.</li>
+        <li><strong>Holiday availability counted as every week.</strong> One-day windows for Thanksgiving, Christmas Eve and similar dates were treated as weekly availability. They're now ignored for new ongoing cases.</li>
+      </ul>
+      <p>So expect a few more <strong>HEDGE</strong> answers on long-hour requests. Those answers are more honest, not worse.</p>
+      <div class="callout info"><span class="ic">✎</span><div><strong>For Scheduling Partners keeping notes up to date:</strong> the check reads lines like <code>Long Hour Days: Su, M, W</code>, <code>Short Hours: T, Th, F</code> and <code>Overnights: Sa</code>. Use <strong>Th</strong> for Thursday, since a single <strong>T</strong> means Tuesday. Once a caregiver's notes list long or short days, a day that isn't listed isn't offered for day visits.</div></div>
+      <div class="callout tip"><span class="ic">⏱</span><div>The tool refreshes Viv data every <strong>15 minutes</strong>, so a change to a caregiver's availability in Viv can take up to 15 minutes to show up in the check.</div></div>
+    </section>
+
+    <div class="divider"></div>
+    <p>Questions or something not working? Message Andrew Dobson. Screenshots help.</p>
+  </main>
+</div>
+<footer>Tribute Home Care · Lead Taker Tool · What's New, November 2026</footer>
+</body>
+</html>
