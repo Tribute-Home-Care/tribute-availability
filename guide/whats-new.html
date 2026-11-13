@@ -99,7 +99,6 @@ code{font-family:var(--display);font-size:13px;background:var(--secondary);borde
     <div class="grp">Taking a new lead</div>
     <a href="#level">7 · Service level</a>
     <a href="#startdate">8 · Start date</a>
-    <a href="#avail">9 · Availability check</a>
     <div class="grp">More</div>
     <a href="index.html">Full user guide</a>
   </nav>
@@ -108,7 +107,7 @@ code{font-family:var(--display);font-size:13px;background:var(--secondary);borde
     <div class="hero">
       <h2>What's new in the Lead Taker Tool</h2>
       <p>Changes from November 4 to 13, almost all from your feedback. Most of them are in the <strong>Lead Desk · CSAs</strong> tab. Refresh the tool once to pick everything up.</p>
-      <div class="pills"><span class="pill">One-click send</span><span class="pill">Family / POA signers</span><span class="pill">Waiting on signature</span><span class="pill">Live-in rates</span><span class="pill">Service level fix</span><span class="pill">Better availability answers</span></div>
+      <div class="pills"><span class="pill">One-click send</span><span class="pill">Family / POA signers</span><span class="pill">Waiting on signature</span><span class="pill">Live-in rates</span><span class="pill">Service level fix</span></div>
     </div>
     <div class="callout info"><span class="ic">ℹ</span><div>The screenshots use made-up clients and staff. Your screen will show your real leads.</div></div>
 
@@ -199,18 +198,6 @@ code{font-family:var(--display);font-size:13px;background:var(--secondary);borde
       <p>The availability check's <strong>Start date</strong> used to default to June 15. It now starts as today's date, and goes back to today when you clear the form for the next lead.</p>
     </section>
 
-    <section id="avail">
-      <span class="who">New Lead · Scheduling</span>
-      <h3 class="sec"><span class="secnum">9</span>More accurate availability answers</h3>
-      <p>Two things were making the availability check too optimistic, mostly on long-hour and 24/7 requests:</p>
-      <ul>
-        <li><strong>Short-hour caregivers counted for long-hour days.</strong> The check judged long vs short from how wide a caregiver's availability window was in Viv, so a 7a–8p window looked like a long-hour caregiver even if they only take short visits. It now reads the <strong>availability notes</strong> in Viv instead.</li>
-        <li><strong>Holiday availability counted as every week.</strong> One-day windows for Thanksgiving, Christmas Eve and similar dates were treated as weekly availability. They're now ignored for new ongoing cases.</li>
-      </ul>
-      <p>So expect a few more <strong>HEDGE</strong> answers on long-hour requests. Those answers are more honest, not worse.</p>
-      <div class="callout info"><span class="ic">✎</span><div><strong>For Scheduling Partners keeping notes up to date:</strong> the check reads lines like <code>Long Hour Days: Su, M, W</code>, <code>Short Hours: T, Th, F</code> and <code>Overnights: Sa</code>. Use <strong>Th</strong> for Thursday, since a single <strong>T</strong> means Tuesday. Once a caregiver's notes list long or short days, a day that isn't listed isn't offered for day visits.</div></div>
-      <div class="callout tip"><span class="ic">⏱</span><div>The tool refreshes Viv data every <strong>15 minutes</strong>, so a change to a caregiver's availability in Viv can take up to 15 minutes to show up in the check.</div></div>
-    </section>
 
     <div class="divider"></div>
     <p>Questions or something not working? Message Andrew Dobson. Screenshots help.</p>
