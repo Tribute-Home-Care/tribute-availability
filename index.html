@@ -1589,7 +1589,8 @@
     h += '<div class="foot">'+esc(d.coverage)+' · '+esc(d.days_per_week)+' day(s)/week · '+esc(d.caregivers_local)+' local'
        + (d.certification?' · '+esc(d.certification)+' only':'')
        + (d.caregivers_extended!=null?' · '+esc(d.caregivers_extended)+' beyond '+esc(d.radius_miles||30)+'mi':'')
-       + (d.open_demand_total!=null?' · '+esc(d.open_demand_total)+' open booking sets netted':'')+'</div>';
+       + (d.short_term ? ' · short-term: real bookings and open visits on ' + esc((d.short_term.dates||[]).join(', '))
+          : (d.open_demand_total!=null?' · '+esc(d.open_demand_total)+' open booking sets netted':''))+'</div>';
     h += '</div>';
     return h;
   }
