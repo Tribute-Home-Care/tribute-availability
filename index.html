@@ -1472,7 +1472,7 @@
         const title = cell.label + ': ' + cell.local + ' local free'
           + (cell.booked_that_date ? ', ' + cell.booked_that_date + ' already booked that date' : '')
           + (cell.off_that_date ? ', ' + cell.off_that_date + ' off that date' : '')
-          + (cell.usual_day_unbooked ? ', ' + cell.usual_day_unbooked + ' usually work this day but have nothing booked (not counted; worth a call)' : '')
+          + (cell.usual_day_unbooked ? ', ' + cell.usual_day_unbooked + ' of them usually work this day and have nothing booked (counted; confirm first)' : '')
           + (cell.competing_demand ? ', ' + cell.competing_demand + (g.mode === 'short' ? ' open visit(s) nearby that date' : ' open booking set(s)') : '')
           + (cell.extended ? ', ' + cell.extended + ' beyond ' + (g.radius_miles || 30) + 'mi' : '')
           + (cell.requested ? '' : ' — not requested');
