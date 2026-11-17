@@ -387,6 +387,13 @@
       <label>Start date</label>
       <input type="date" id="start_date" />
 
+      <label>Ongoing or short-term?</label>
+      <div class="seg" id="term">
+        <button type="button" data-v="ongoing" class="on">Ongoing</button>
+        <button type="button" data-v="short">Short-term (these dates)</button>
+      </div>
+      <div class="muted" id="termnote">A regular schedule. Judged on caregivers' usual weeks.</div>
+
       <label>Schedule</label>
       <div class="seg" id="recurrence">
         <button type="button" data-v="weekly" class="on">Weekly (every day)</button>
@@ -1329,7 +1336,7 @@
   })();
 
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const state = { coverage:'Days', day_length:'Long', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), gender:'', driver:'', certification:'', coords:null };
+  const state = { coverage:'Days', day_length:'Long', term:'ongoing', recurrence:'weekly', days:new Set([1,2,3,4,5]), restrictions:new Set(), gender:'', driver:'', certification:'', coords:null };
 
   const daysEl = document.getElementById('days');
   DOW.forEach((d,i) => {
@@ -1353,6 +1360,9 @@
   }
   seg('coverage','coverage', syncCoverage);
   seg('day_length','day_length');
+  seg('term','term', () => { document.getElementById('termnote').textContent = state.term === 'short'
+    ? 'Checks the actual dates in the 7 days from the start date: who is free, booked or off that day, and the open visits nearby.'
+    : "A regular schedule. Judged on caregivers' usual weeks."; });
   seg('recurrence','recurrence', () => document.getElementById('daysWrap').classList.toggle('hide', state.recurrence!=='specific'));
   seg('gender','gender');
   seg('driver','driver');
@@ -1417,6 +1427,7 @@
         client_latitude: coords ? coords.lat : undefined,
         client_longitude: coords ? coords.lon : undefined,
         start_date: document.getElementById('start_date').value,
+        term: state.term === 'short' ? 'short' : undefined,
         recurrence: state.recurrence,
         days_of_week: state.recurrence==='specific' ? [...state.days] : undefined,
         restrictions: [...state.restrictions],
@@ -1451,14 +1462,17 @@
 
   function rygGridHTML(g) {
     if (!g || !g.rows || !g.rows.length) return '';
-    let h = '<table class="ryg"><tr><th></th>' + DOW.map(d => '<th>'+d+'</th>').join('') + '</tr>';
+    const heads = g.mode === 'short' ? g.rows[0].cells.map(c => c.label) : DOW;
+    let h = '<table class="ryg"><tr><th></th>' + heads.map(d => '<th>'+esc(d)+'</th>').join('') + '</tr>';
     for (const row of g.rows) {
       h += '<tr><td class="rlab">'+esc(rowLabel(row.row))+'</td>';
       for (const cell of row.cells) {
         const cls = 'cell ' + cell.color + (cell.requested ? '' : ' nr');
         const txt = cell.color === 'red' ? '' : String(cell.net_free);
         const title = cell.label + ': ' + cell.local + ' local free'
-          + (cell.competing_demand ? ', ' + cell.competing_demand + ' open booking set(s)' : '')
+          + (cell.booked_that_date ? ', ' + cell.booked_that_date + ' already booked that date' : '')
+          + (cell.off_that_date ? ', ' + cell.off_that_date + ' off that date' : '')
+          + (cell.competing_demand ? ', ' + cell.competing_demand + (g.mode === 'short' ? ' open visit(s) nearby that date' : ' open booking set(s)') : '')
           + (cell.extended ? ', ' + cell.extended + ' beyond ' + (g.radius_miles || 30) + 'mi' : '')
           + (cell.requested ? '' : ' — not requested');
         h += '<td><div class="'+cls+'" title="'+esc(title)+'">'+txt+'</div></td>';
@@ -1554,8 +1568,12 @@
     h += '<div id="detailsWrap" class="hide">';
     if (d.week_rule && d.week_rule.per_shift && d.week_rule.per_shift.length) {
       const wr = d.week_rule;
-      const parts = wr.per_shift.map(s => rowLabel(s.row) + ': ' + s.days_clear + ' of 7 days with ' + wr.min_net + '+ net' + (s.days.length && s.days.length < 7 ? ' (' + s.days.join(', ') + ')' : ''));
-      h += '<div class="muted" style="margin:6px 0 10px;font-size:13px">Rule: ' + wr.min_net + '+ net surplus on at least ' + wr.needed_days + ' of 7 days within ' + (d.radius_miles || 30) + ' driving miles. ' + parts.map(esc).join(' · ') + '.</div>';
+      const perDay = wr.mode === 'requested' || wr.mode === 'dates';
+      const parts = wr.per_shift.map(s => perDay
+        ? rowLabel(s.row) + ': ' + (s.requested_short.length ? 'short on ' + s.requested_short.join(', ') : 'all ' + s.requested_days + ' clear')
+        : rowLabel(s.row) + ': ' + s.days_clear + ' of 7 days with ' + wr.min_net + '+ net' + (s.days.length && s.days.length < 7 ? ' (' + s.days.join(', ') + ')' : ''));
+      const need = wr.needed || ('at least ' + wr.needed_days + ' of 7 days');
+      h += '<div class="muted" style="margin:6px 0 10px;font-size:13px">Rule: ' + wr.min_net + '+ net surplus on ' + esc(need) + ' within ' + (d.radius_miles || 30) + ' driving miles' + (wr.mode === 'dates' ? ', counting real bookings, time off and open visits on those dates' : '') + '. ' + parts.map(esc).join(' · ') + '.</div>';
       if (d.heads_up) h += '<div class="notg" style="margin-bottom:10px"><b>Deficit days</b>' + esc(d.heads_up) + '. Not a hedge: the week clears.</div>';
       if (d.certification && d.certifications_seen) h += '<div class="muted" style="margin:0 0 10px;font-size:13px">Counting only caregivers with an unexpired ' + esc(d.certification) + ' on file in isolved' + (d.certifications_synced_at ? ' (as of ' + esc(String(d.certifications_synced_at).slice(0,10)) + ')' : '') + '.</div>';
     }
