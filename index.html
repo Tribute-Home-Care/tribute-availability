@@ -175,7 +175,7 @@
   /* RYG grid keeps its spaced, borderless look */
   .lp { margin:12px 0; padding:12px 14px; border:1px solid var(--line, #e7e2dc); border-radius:12px; }
   .lp-h { font-weight:700; font-size:14px; margin-bottom:6px; } .lp-h span { font-weight:400; color:var(--muted); font-size:12.5px; }
-  .lp-slot { margin-top:8px; } .lp-d { font-weight:600; font-size:13px; }
+  .lp-slot { margin-top:8px; } .lp-x { font-size:12.5px; color:var(--muted); margin:6px 0 0; font-style:italic; } .lp-d { font-weight:600; font-size:13px; }
   .lp ol { margin:4px 0 0 18px; padding:0; } .lp li { font-size:13px; margin:2px 0; } .lp li span { color:var(--muted); }
   table.ryg { border-collapse:separate; border-spacing:5px; margin:8px 0 6px; border:none; border-radius:0; overflow:visible; }
   table.ryg th, table.ryg td { background:none; border:none; padding:0 2px 2px; text-align:center; }
@@ -1493,7 +1493,7 @@
   function likelyPickupsHTML(lp) {
     if (!lp) return '';
     if (lp.error || lp.note) return '<div class="muted" style="margin:10px 0;font-size:13px">Likely to pick up: ' + esc(lp.error ? 'Call Intelligence ' + lp.error : lp.note) + '.</div>';
-    const slots = (lp.slots || []).filter(s => s.candidates && s.candidates.length);
+    const slots = (lp.slots || []).filter(s => (s.candidates && s.candidates.length) || (s.stretch && s.stretch.length));
     if (!slots.length) return '<div class="muted" style="margin:10px 0;font-size:13px">Likely to pick up: nobody stood out in Call Intelligence for these dates.</div>';
     const shapeName = { day_long:'Day', day_short:'Day', overnight:'Overnight' };
     let h = '<div class="lp"><div class="lp-h">Likely to pick up <span>from Call Intelligence · best first, who to call</span></div>';
@@ -1501,15 +1501,17 @@
       const dt = new Date(s.date + 'T12:00:00');
       const lab = dt.toLocaleDateString('en-US', { weekday:'short', month:'numeric', day:'numeric' });
       h += '<div class="lp-slot"><div class="lp-d">' + esc(shapeName[s.shape] || s.shape) + ' · ' + esc(lab) + '</div><ol>';
-      for (const c of s.candidates) {
+      const line = (c, i) => {
         // Order is the signal; the model's raw probability runs high against
         // the real ~15% yes rate on offered visits, so no percentage is shown.
         const mi = c.drive_miles != null ? Math.round(c.drive_miles) + ' mi drive' : (c.miles_straight != null ? '~' + Math.round(c.miles_straight) + ' mi' : 'distance unknown');
         const tags = [mi, c.within_availability ? 'in their availability' : 'outside their availability',
           c.working_nearby_that_day ? 'working nearby that day' : '', c.overtime ? 'would be overtime' : ''].filter(Boolean);
-        h += '<li><b>' + esc(c.name || '') + '</b> <span>' + tags.map(esc).join(' · ') + '</span></li>';
-      }
-      h += '</ol></div>';
+        return '<li><b>' + esc(c.name || '') + '</b> <span>' + tags.map(esc).join(' · ') + '</span></li>';
+      };
+      h += (s.candidates || []).map(line).join('') + '</ol>';
+      if (s.stretch && s.stretch.length) h += '<div class="lp-x">Might stretch for it (outside their availability)</div><ol>' + s.stretch.map(line).join('') + '</ol>';
+      h += '</div>';
     }
     return h + '</div>';
   }
