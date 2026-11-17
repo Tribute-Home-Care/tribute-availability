@@ -1547,7 +1547,8 @@
     // defined logic, Scheduling figures out the deficit days). Everything else
     // lives behind the details link for Scheduling.
     let h = '<div class="badge '+d.decision+'">'+(yes?'✓ YES — you can confirm':'⚠️ HEDGE — confirm with the team')+'</div>';
-    if (d.certification && !d.certifications_seen) h += '<div class="notg" style="margin:10px 0"><b>Certification data did not load</b> so nobody matched the ' + esc(d.certification) + ' filter. Treat this answer as a hedge and tell Andrew.</div>';
+    if (d.location_missing) h += '<div class="notg" style="margin:10px 0"><b>We could not find this address on the map</b>, so nearby caregivers could not be counted. Pick the address from the suggestions under the box (or add the town and ZIP) and check again.</div>';
+    if (d.certification && !d.certifications_seen) h +='<div class="notg" style="margin:10px 0"><b>Certification data did not load</b> so nobody matched the ' + esc(d.certification) + ' filter. Treat this answer as a hedge and tell Andrew.</div>';
     h += '<div class="tell"><div class="lab">Say to the caller</div><div class="scr">“'+esc(friendlyDates(d.lead_taker_script))+'”</div></div>';
     h += '<button type="button" class="toggle" id="showDetails">▾ Show details for Scheduling</button>';
     h += '<div id="detailsWrap" class="hide">';
