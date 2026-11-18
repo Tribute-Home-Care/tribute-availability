@@ -1490,6 +1490,22 @@
 
   // Call Intelligence: who would most likely say yes on each date, including
   // outside their stated availability. For Scheduling; never changes the badge.
+  // Short-term: the caregivers behind each grid count (Andrew 2026-11-17).
+  function freeByDateHTML(g) {
+    if (!g || g.mode !== 'short') return '';
+    let h = '';
+    for (const r of g.rows || []) for (const c of r.cells || []) {
+      if (!Array.isArray(c.free)) continue;
+      h += '<details class="lp-slot"><summary class="lp-d">' + esc(rowLabel(r.shift)) + ' · ' + esc(c.label) + ': ' + c.free.length + ' free'
+        + (c.competing_demand ? ', ' + c.competing_demand + ' open visit' + (c.competing_demand === 1 ? '' : 's') + ' nearby' : '') + '</summary>';
+      h += c.free.length ? '<div style="font-size:13px;margin:4px 0 0 14px">' + c.free.map(f => esc(f.name) + (f.is_driver ? ' 🚗' : '')
+        + ' <span class="muted">' + (f.distance_miles != null ? esc(f.distance_miles) + ' mi' : 'distance unknown') + (f.usual_day_unbooked ? ' · usually works this day, nothing booked: confirm' : '') + '</span>').join('<br>') + '</div>'
+        : '<div class="muted" style="font-size:13px;margin:4px 0 0 14px">Nobody free.</div>';
+      h += '</details>';
+    }
+    return h ? '<div class="lp"><div class="lp-h">Who is free <span>on each date, nearest first · open a date to see names</span></div>' + h + '</div>' : '';
+  }
+
   function likelyPickupsHTML(lp) {
     if (!lp) return '';
     if (lp.error || lp.note) return '<div class="muted" style="margin:10px 0;font-size:13px">Likely to pick up: ' + esc(lp.error ? 'Call Intelligence ' + lp.error : lp.note) + '.</div>';
@@ -1617,6 +1633,7 @@
     if (hedge.length) h += '<div class="notg"><b>⚠️ Tight</b> — ' + hedge.map(esc).join(' · ') + '</div>';
     h += rygGridHTML(d.ryg_grid);
     h += notGuaranteedHTML(d.ryg_grid);
+    h += freeByDateHTML(d.ryg_grid);
     h += likelyPickupsHTML(d.likely_pickups);
     h += '<div class="qa"><div class="lab">Ask a follow-up</div><div id="qaLog" class="qalog"></div>'
        + '<form id="qaForm" class="qarow"><input id="qaInput" type="text" placeholder="e.g. What about Thursday overnights?" autocomplete="off" /><button class="qabtn" type="submit">Ask</button></form></div>';
